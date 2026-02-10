@@ -57,12 +57,12 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 	@TagField("augmentFilterID")
 	private String augmentFilterID;
 	@TagField("positive_filter")
-	private String positive;
+	private String positive = "";
 	@TagField("negative_filter")
-	private String negative;
+	private String negative = "";
 	private Predicate<EntityRollingStock> compiledFilter;
 	@TagField("actuator_filter")
-	private String actuatorFilter;
+	private String actuatorFilter = "";
 	@TagField("snowLayers")
 	private int snowLayers = 0;
 	@TagField("flexible")

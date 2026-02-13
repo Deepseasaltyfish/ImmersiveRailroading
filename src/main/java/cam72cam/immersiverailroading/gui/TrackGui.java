@@ -83,7 +83,7 @@ public class TrackGui implements IScreen {
 	private Slider nearHeightOffsetSlider;
 	private Slider farHeightOffsetSlider;
 
-	//vertical smooth config
+    //vertical smooth config
 //	private Slider nearPitchSlider;
 //	private Slider farPitchSlider;
 	private TextField nearPitchInput;
@@ -492,6 +492,17 @@ public class TrackGui implements IScreen {
 			}
 		};
 		farHeightOffsetSlider.onSlider();
+
+        Button rollAndOffsetPageButton = new Button(screen, GUIHelpers.getScreenWidth() / 2 - width / 2, ytop + height * 3, width / 2, height, "Config Roll") {
+            @Override
+            public void onClick(Player.Hand hand) {
+                if (te != null) {
+//                    GuiTypes.ROLL_OFFSET_PREVIEW.open(MinecraftClient.getPlayer(),te.getPos());
+                } else {
+                    GuiTypes.ROLL_OFFSET.open(MinecraftClient.getPlayer());
+                }
+            }
+        };
 
 		subTypeSelector = new ListSelector<TrackItems>(screen, width, 100, height, selectedWaySettings.type,
 				Arrays.stream(TrackItems.values())

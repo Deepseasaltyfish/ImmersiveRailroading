@@ -103,6 +103,7 @@ public class TrackExchangerGui implements IScreen {
 				0,0,
 				0,0,
 				true,-1,
+				null,
 				TrackDirection.NONE,
 				railBed,
 				ItemStack.EMPTY,

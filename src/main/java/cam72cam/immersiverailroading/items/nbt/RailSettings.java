@@ -2,6 +2,7 @@ package cam72cam.immersiverailroading.items.nbt;
 
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.library.*;
+import cam72cam.immersiverailroading.util.RollAndOffsetInfo;
 import cam72cam.mod.item.ItemStack;
 import cam72cam.mod.serialization.*;
 
@@ -20,6 +21,7 @@ public class RailSettings {
     public final float customOffset;
     public final boolean isForward;
     public final int farRadius;
+    public final RollAndOffsetInfo rollAndOffsetInfo;
     public final TrackPositionType posType;
     public final TrackSmoothing smoothing;
     public final TrackDirection direction;
@@ -31,7 +33,7 @@ public class RailSettings {
     public final int transfertableEntryCount;
     public final int transfertableEntrySpacing;
 
-    public RailSettings(Gauge gauge, String track, TrackItems type, int length, float degrees, float curvosity, TrackPositionType posType, TrackSmoothing smoothing, float pitchStart, float pitchEnd, float placementOffset, float customOffset, boolean isForward, int farRadius, TrackDirection direction, ItemStack railBed, ItemStack railBedFill, boolean isPreview, boolean isGradeCrossing, int count, int spacing) {
+    public RailSettings(Gauge gauge, String track, TrackItems type, int length, float degrees, float curvosity, TrackPositionType posType, TrackSmoothing smoothing, float pitchStart, float pitchEnd, float placementOffset, float customOffset, boolean isForward, int farRadius, RollAndOffsetInfo rollAndOffsetInfo, TrackDirection direction, ItemStack railBed, ItemStack railBedFill, boolean isPreview, boolean isGradeCrossing, int count, int spacing) {
         this.gauge = gauge;
         this.track = track;
         this.type = type;
@@ -53,6 +55,7 @@ public class RailSettings {
         this.customOffset = customOffset;
         this.isForward = isForward;
         this.farRadius = farRadius;
+        this.rollAndOffsetInfo = rollAndOffsetInfo;
     }
     public void write(ItemStack stack) {
         TagCompound root = stack.getTagCompound();
@@ -168,6 +171,8 @@ public class RailSettings {
         public TagCompound pitchTag;
         @TagField(value = "posOffset")
         public TagCompound posOffsetTag;
+        @TagField("rollAndOffsetInfo")
+        public RollAndOffsetInfo rollAndOffsetInfo;
         @TagField(value = "cubicParabola")
         public TagCompound cubicParabolaTag;
         @TagField("transfertableEntryCount")
@@ -190,6 +195,8 @@ public class RailSettings {
             cubicParabolaTag = new TagCompound();
             cubicParabolaTag.setBoolean("isForward", settings.isForward);
             cubicParabolaTag.setInteger("farRadius", settings.farRadius);
+
+            rollAndOffsetInfo = settings.rollAndOffsetInfo;
 
             this.type = settings.type;
             this.length = settings.length;
@@ -224,6 +231,8 @@ public class RailSettings {
             cubicParabolaTag.setBoolean("isForward", true);
             cubicParabolaTag.setInteger("farRadius", -1);
 
+            rollAndOffsetInfo = null;
+
             length = 10;
             degrees = 90;
             posType = TrackPositionType.FIXED;
@@ -256,6 +265,7 @@ public class RailSettings {
                     posOffsetTag.getFloat("customOffset"),
                     cubicParabolaTag.getBoolean("isForward"),
                     cubicParabolaTag.getInteger("farRadius"),
+                    rollAndOffsetInfo,
                     direction,
                     railBed,
                     railBedFill,

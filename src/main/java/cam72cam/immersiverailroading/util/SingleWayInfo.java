@@ -42,6 +42,7 @@ public class SingleWayInfo {
             0f,0f,
             0f,0f,
             true,-1,
+            null,
             TrackDirection.RIGHT,
             ItemStack.EMPTY, ItemStack.EMPTY,
             true,

@@ -430,7 +430,7 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 	}
 
 	@Override
-	public PathingContext getNextPosition(PathingContext currentPosition, Vec3d motion) {//todo 需要根据什么矫正roll的正负?
+	public PathingContext getNextPosition(PathingContext currentPosition, Vec3d motion) {
 		double distanceMetersSq = motion.lengthSquared();
 		double maxDistance = 0.25;
 		if (distanceMetersSq * 0.9 > maxDistance * maxDistance) {

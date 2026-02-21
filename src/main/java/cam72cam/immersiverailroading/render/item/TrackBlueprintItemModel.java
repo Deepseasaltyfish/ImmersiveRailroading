@@ -64,7 +64,7 @@ public class TrackBlueprintItemModel implements ItemRender.IItemModel {
 	private static ExpireableMap<String, RailInfo> infoCache = new ExpireableMap<>();
 
 	//render the preview when mouse target at a block
-	public static void renderMouseover(Player player, ItemStack stack, Vec3i pos, Vec3d vec, RenderState state, float partialTicks) {//todo:分段后，渲染的roll是0
+	public static void renderMouseover(Player player, ItemStack stack, Vec3i pos, Vec3d vec, RenderState state, float partialTicks) {//todo:分段后，渲染的roll似乎有问题？
 		Vec3d hit = vec.subtract(pos);
 		World world = player.getWorld();
 

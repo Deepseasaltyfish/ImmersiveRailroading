@@ -102,9 +102,9 @@ public class LocomotiveModel<ENTITY extends Locomotive, DEFINITION extends Locom
     @Override
     protected void initStates() {
         super.initStates();
-        frontLocomotive = base.push(settings -> settings.add((EntityMoveableRollingStock s, float partialTicks) -> getFrontLocomotiveMatrix(s)));//todo 抽风？
+        frontLocomotive = base.push(settings -> settings.add((EntityMoveableRollingStock s, float partialTicks) -> getFrontLocomotiveMatrix(s)));
         frontLocomotiveRocking = addExtraRoll(frontLocomotive);
-        rearLocomotive = base.push(settings -> settings.add((EntityMoveableRollingStock s, float partialTicks) -> getRearLocomotiveMatrix(s)));//todo 抽风？
+        rearLocomotive = base.push(settings -> settings.add((EntityMoveableRollingStock s, float partialTicks) -> getRearLocomotiveMatrix(s)));
         rearLocomotiveRocking = addExtraRoll(rearLocomotive);
     }
 

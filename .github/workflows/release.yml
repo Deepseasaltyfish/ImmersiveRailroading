@@ -32,6 +32,11 @@ jobs:
       run: find src/main/resources/assets/immersiverailroading/ | grep png | xargs -I foo pngquant -s1 -f --ext .png foo
     - name: Gradle build
       run: ./gradlew build -Dtarget=release
+    - name: Remove extra jars (keep only main jar)
+      run: |
+        rm -f build/libs/*-downgraded*.jar \
+          build/libs/*-shadow*.jar \
+          build/libs/*-sources*.jar || true
     - uses: actions/upload-artifact@v6
       with:
         name: Immersive Railroading ${{matrix.branch}}

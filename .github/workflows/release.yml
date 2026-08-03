@@ -35,4 +35,4 @@ jobs:
     - uses: actions/upload-artifact@v6
       with:
         name: Immersive Railroading ${{matrix.branch}}
-        path: build/libs/ImmersiveRailroading-${{matrix.branch}}*
+        path: build/libs/ImmersiveRailroading-${{matrix.branch}}*.jar

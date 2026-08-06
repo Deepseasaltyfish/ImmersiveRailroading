@@ -12,20 +12,22 @@ import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class TrackSnapUtil {
     public static VecYPR getNeighborNode(Player player, World world, Vec3i pos, Vec3d hit, ItemStack stack, boolean isNear) {
         RailSettings stackInfo = RailSettings.from(stack);
         EndPointData endPointData = isNear ? stackInfo.nearPointData : stackInfo.farPointData;
+
         Vec3d worldPos = new Vec3d(pos).add(hit);
         Vec3d minPos = worldPos;
         double min = Double.MAX_VALUE;
+
         int hori = Math.max((int) (stackInfo.gauge.scale() * 2), 1);
         int vert = 1;
+
         boolean succeeded = false;
+
         float yaw = player.getRotationYaw();
         float yawHead = (540 - yaw) % 360;
         float pitch = 0;
@@ -37,98 +39,109 @@ public class TrackSnapUtil {
                 for (int z = -hori; z <= hori; z++) {
                     Vec3i offset = pos.add(x, y, z);
                     TileRailBase tile = world.getBlockEntity(offset, TileRailBase.class);
-                    Set<Vec3i> visited = new HashSet<>();
 
-                    while (tile != null){
-                        if (visited.contains(tile.getPos())) break;
-                        visited.add(tile.getPos());
+                    // Use identity map because overlapping rails may have identical positions.
+                    Set<TileRailBase> visited = Collections.newSetFromMap(new IdentityHashMap<>());
 
-                        if (!(tile instanceof TileRail)) {
-                            tile = tile.getParentTile();
+                    while (tile != null) {
+                        // Prevent infinite loops due to cyclic replaced chains.
+                        if (!visited.add(tile)) {
+                            break;
                         }
 
-                        TileRail rail = (TileRail) tile;
-                        if (rail == null || rail.info == null || Math.abs(rail.getTrackGauges()[0] - stackInfo.gauge.value()) > 1.0E-6) {
-                            TileRailBase next = tile != null ? tile.getReplacedTile() : null;
-                            if (next == null) break;
-                            tile = next;
-                            continue;
+                        /*
+                         * Do not overwrite 'tile' directly.
+                         * If tile is a Gag, get its parent Rail; otherwise use tile itself.
+                         * This preserves the replaced chain for later traversal.
+                         */
+                        TileRail rail = tile instanceof TileRail
+                                ? (TileRail) tile
+                                : tile.getParentTile();
+
+                        if (rail != null
+                                && rail.info != null
+                                && Math.abs(rail.getTrackGauges()[0] - stackInfo.gauge.value()) <= 1.0E-6) {
+
+                            BuilderBase builder = rail.info.getBuilder(world);
+                            List<VecYPR> renderData = builder.getRenderData();
+
+                            if (!renderData.isEmpty()) {
+                                // Offset applied to all endpoints from this rail's origin.
+                                Vec3d railOffset = rail.info.placementInfo.placementPosition.add(rail.getPos());
+
+                                if (renderData.size() > 1) {
+                                    // First endpoint (near side, reverse roll to match facing)
+                                    VecYPR first = renderData.getFirst();
+                                    Vec3d p1 = first.add(railOffset);
+                                    float yaw1 = first.getYaw();
+                                    float pitch1 = first.getPitch();
+                                    float roll1 = first.getRoll();
+                                    double dist1 = p1.distanceTo(worldPos);
+
+                                    if (dist1 < min ||
+                                            (endPointData.trackSnapSettings().snapYaw()
+                                                    && dist1 - 0.5 < min
+                                                    && succeeded
+                                                    && VecUtil.delta(yaw1, yawHead) < VecUtil.delta(yaw, yawHead))) {
+                                        min = dist1;
+                                        minPos = p1;
+                                        yaw = yaw1;
+                                        pitch = pitch1;
+                                        roll = -roll1;
+                                        succeeded = true;
+                                    }
+
+                                    // Last endpoint (far side, reverse yaw and pitch)
+                                    VecYPR last = renderData.getLast();
+                                    Vec3d p2 = last.add(railOffset);
+                                    float yaw2 = last.getYaw();
+                                    float pitch2 = last.getPitch();
+                                    float roll2 = last.getRoll();
+                                    double dist2 = p2.distanceTo(worldPos);
+
+                                    if (dist2 < min ||
+                                            (endPointData.trackSnapSettings().snapYaw()
+                                                    && dist2 - 0.5 < min
+                                                    && succeeded
+                                                    && VecUtil.delta(yaw2, yawHead) < VecUtil.delta(yaw, yawHead))) {
+                                        min = dist2;
+                                        minPos = p2;
+                                        yaw = yaw2 + 180;
+                                        pitch = -pitch2;
+                                        roll = roll2;
+                                        succeeded = true;
+                                    }
+                                } else {
+                                    // Single endpoint track: no inherent direction; pick the orientation closer to player's facing.
+                                    VecYPR data = renderData.getFirst();
+                                    Vec3d p = data.add(railOffset);
+                                    float currentYaw = data.getYaw();
+                                    float currentPitch = data.getPitch();
+                                    float currentRoll = data.getRoll();
+
+                                    if (VecUtil.delta(currentYaw, rotationYawHead) > 90) {
+                                        currentYaw += 180;
+                                        currentRoll = -currentRoll;
+                                    }
+
+                                    double dist = p.distanceTo(worldPos);
+                                    if (dist < min ||
+                                            (endPointData.trackSnapSettings().snapYaw()
+                                                    && dist - 0.5 < min
+                                                    && succeeded
+                                                    && VecUtil.delta(currentYaw, yawHead) < VecUtil.delta(yaw, yawHead))) {
+                                        min = dist;
+                                        minPos = p;
+                                        yaw = currentYaw + 180;
+                                        pitch = -currentPitch;
+                                        roll = currentRoll;
+                                        succeeded = true;
+                                    }
+                                }
+                            }
                         }
 
-                        BuilderBase builder = rail.info.getBuilder(world);
-                        List<VecYPR> renderData = builder.getRenderData();
-                        if (renderData.isEmpty()) continue;
-
-                        if (renderData.size() > 1) {
-                            Vec3d p1 = renderData.getFirst()
-                                    .add(rail.info.placementInfo.placementPosition)
-                                    .add(tile.getPos());
-                            float yaw1 = renderData.getFirst().getYaw();
-                            float pitch1 = renderData.getFirst().getPitch();
-                            float roll1 = renderData.getFirst().getRoll();
-                            double dist1 = p1.distanceTo(worldPos);
-                            if (
-                                    dist1 < min ||
-                                    (
-                                            endPointData.trackSnapSettings().snapYaw() &&
-                                            dist1 - 0.5 < min && succeeded &&
-                                            Math.abs(VecUtil.delta(yaw1, yawHead)) < Math.abs(VecUtil.delta(yaw, yawHead))
-                                    )
-                            ) {
-                                min = dist1;
-                                minPos = p1;
-                                yaw = yaw1;
-                                pitch = pitch1;
-                                roll = -roll1;
-                                succeeded = true;
-                            }
-
-                            Vec3d p2 = renderData.getLast().add(rail.info.placementInfo.placementPosition).add(tile.getPos());
-                            float yaw2 = renderData.getLast().getYaw();
-                            float pitch2 = renderData.getLast().getPitch();
-                            float roll2 = renderData.getLast().getRoll();
-                            double dist2 = p2.distanceTo(worldPos);
-                            if (
-                                    dist2 < min ||
-                                    (
-                                            endPointData.trackSnapSettings().snapYaw() &&
-                                            dist2 - 0.5 < min && succeeded &&
-                                            Math.abs(VecUtil.delta(yaw2, yawHead)) < Math.abs(VecUtil.delta(yaw, yawHead))
-                                    )
-                            ) {
-                                min = dist2;
-                                minPos = p2;
-                                yaw = yaw2 + 180;
-                                pitch = -pitch2;
-                                roll = roll2;
-                                succeeded = true;
-                            }
-                        } else {
-                            Vec3d p = renderData.getFirst()
-                                    .add(rail.info.placementInfo.placementPosition)
-                                    .add(tile.getPos());
-                            float currentYaw = renderData.getFirst().getYaw();
-                            float currentPitch = renderData.getFirst().getPitch();
-                            if (Math.abs(currentYaw - rotationYawHead) > 90) {
-                                currentYaw += 180;
-                            }
-                            double dist = p.distanceTo(worldPos);
-                            if (
-                                    dist < min ||
-                                    (
-                                            endPointData.trackSnapSettings().snapYaw() &&
-                                            dist - 0.5 < min && succeeded &&
-                                            Math.abs(VecUtil.delta(currentYaw, yawHead)) < Math.abs(VecUtil.delta(yaw, yawHead))
-                                    )
-                            ) {
-                                min = dist;
-                                minPos = p;
-                                yaw = currentYaw;
-                                pitch = currentPitch;
-                                succeeded = true;
-                            }
-                        }
-
+                        // Continue along the replaced chain for historical overlays.
                         tile = tile.getReplacedTile();
                     }
                 }
@@ -136,9 +149,12 @@ public class TrackSnapUtil {
         }
 
         if (min <= hori) {
-            yaw = endPointData.trackSnapSettings().snapYaw() ? (540 - yaw) % 360 : rotationYawHead;
+            yaw = endPointData.trackSnapSettings().snapYaw()
+                    ? (540 - yaw) % 360
+                    : rotationYawHead;
             return new VecYPR(minPos, yaw, pitch, roll);
         }
+
         return null;
     }
 

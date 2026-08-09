@@ -32,7 +32,6 @@ jobs:
     - name: Process images
       run: find src/main/resources/assets/immersiverailroading/ | grep png | xargs -I foo pngquant -s1 -f --ext .png foo
     - name: Gradle build
-    - name: Gradle build
       run: ./gradlew build -Dtarget=release
     - name: Remove extra jars (keep only main jar)
       run: |

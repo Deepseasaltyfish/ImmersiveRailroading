@@ -208,8 +208,8 @@ public class TrackEndPointGui implements IScreen {
             } catch (NumberFormatException e) {
                 return false;
             }
-            float max = 0.9f;//TODO: 1.0 and -1.0 cause problem now
-            float min = -0.9f;
+            float max = 1f;//TODO: 1.0 and -1.0 cause problem now
+            float min = -1f;
             if (val >= min && val <= max) {
                 settings.nearPointData = settings.nearPointData.with(mutable -> mutable.offset = new Vec3d(0, val, 0));
                 return true;
@@ -230,8 +230,8 @@ public class TrackEndPointGui implements IScreen {
             } catch (NumberFormatException e) {
                 return false;
             }
-            float max = 0.9f;
-            float min = -0.9f;
+            float max = 1f;
+            float min = -1f;
             if (val >= min && val <= max) {
                 settings.farPointData = settings.farPointData.with(mutable -> mutable.offset = new Vec3d(0, val, 0));
                 return true;

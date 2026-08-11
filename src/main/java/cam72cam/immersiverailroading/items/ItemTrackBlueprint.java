@@ -80,6 +80,8 @@ public class ItemTrackBlueprint extends CustomItem {
 				pos = pos.up();
 				if(hit.y >= 0.5) down = true;
 			}
+			if(!BlockUtil.canBeReplaced(world, pos, false)) return ClickResult.REJECTED;
+
 			world.setBlock(pos, IRBlocks.BLOCK_RAIL_PREVIEW);
 			TileRailPreview te = world.getBlockEntity(pos, TileRailPreview.class);
 			if (te != null) {

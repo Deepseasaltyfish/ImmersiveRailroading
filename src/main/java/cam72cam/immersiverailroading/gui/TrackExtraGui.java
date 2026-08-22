@@ -40,6 +40,7 @@ public class TrackExtraGui implements IScreen {
     private RailSettings.Mutable settings;
     private RollAndOffsetInfo.Mutable rollAndOffsetInfoCache;
     private int targetGuiOpenType;
+    private boolean unlockGuiTurnDegree;
     private boolean edited;
     private boolean editLeft;
     private final double length;
@@ -85,7 +86,9 @@ public class TrackExtraGui implements IScreen {
     private TrackExtraGui(ItemStack stack, TileRailPreview te) {
         stack = stack.copy();
         this.settings = RailSettings.from(stack).mutable();
-        this.targetGuiOpenType = new ItemTrackBlueprint.Data(stack).guiOpenType;
+        ItemTrackBlueprint.Data data = new ItemTrackBlueprint.Data(stack);
+        this.targetGuiOpenType = data.guiOpenType;
+        this.unlockGuiTurnDegree = data.unlockGuiTurnDegree;
         this.te = te;
 
         if(this.te != null) {//TODO:Switch and multiSwitch support
@@ -107,7 +110,7 @@ public class TrackExtraGui implements IScreen {
 
         //Common mode:unit:centimeter(1435mm), if in gauge X mm, it will be scaled to rollMax * X / 1435 centimeters
         //Degree mode:degree
-        rollMax = 180;
+        rollMax = 30;
         yOffsetMax = 1;//Unit:meter(1435mm), if in gauge X mm, it will be scaled to rollMax * X / 1435 meters
         zOffsetMax = 1;//Unit:meter(1435mm), if in gauge X mm, it will be scaled to rollMax * X / 1435 meters
 
@@ -522,30 +525,28 @@ public class TrackExtraGui implements IScreen {
         }
 
         if (this.te != null) {
-            new ItemRailUpdatePacket(te.getPos(), settings.immutable(), targetGuiOpenType).sendToServer();
+            new ItemRailUpdatePacket(te.getPos(), settings.immutable(), targetGuiOpenType, unlockGuiTurnDegree).sendToServer();
 
             //Also update client Item to update Rail information
             ItemStack clientStack = te.getItem();
             settings.immutable().write(clientStack);
-            ItemTrackBlueprint.Data data = new ItemTrackBlueprint.Data(clientStack);
-            data.guiOpenType = targetGuiOpenType;
-            data.write();
+            ItemTrackBlueprint.Data.writeTo(clientStack, targetGuiOpenType, unlockGuiTurnDegree);
             te.setItem(clientStack, MinecraftClient.getPlayer());
         } else {
-            new ItemRailUpdatePacket(settings.immutable(), targetGuiOpenType).sendToServer();
+            new ItemRailUpdatePacket(settings.immutable(), targetGuiOpenType, unlockGuiTurnDegree).sendToServer();
 
             //Also update client Item to update Rail information
             ItemStack clientStack = MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY);
             settings.immutable().write(clientStack);
-            ItemTrackBlueprint.Data data = new ItemTrackBlueprint.Data(clientStack);
-            data.guiOpenType = targetGuiOpenType;
-            data.write();
+            ItemTrackBlueprint.Data.writeTo(clientStack, targetGuiOpenType, unlockGuiTurnDegree);
             MinecraftClient.getPlayer().setHeldItem(Player.Hand.PRIMARY, clientStack);
         }
     }
 
     @Override
     public void draw(IScreenBuilder builder, RenderState state) {
+        GUIHelpers.drawRect(0, 0, GUIHelpers.getScreenWidth(), GUIHelpers.getScreenHeight(), 0xCC000000);
+
         int height = 20;
         double xScale = 200;
         double rollYScale = height * 1.5 / rollMax;
@@ -565,7 +566,7 @@ public class TrackExtraGui implements IScreen {
         BezierRenderer rollGraph = new BezierRenderer(state, rollAndOffsetInfoCache.toCurves(RollAndOffsetInfo.ExtraInfoType.ROLL, true));
         rollGraph.drawDashLine(Vec3d.ZERO, new Vec3d(1, 0, 0), Color.WHITE, xScale, rollYScale, 1, 0.05f, 0.05f, 0);
         rollGraph.drawBeziers(curveColor, pointColor, handlePointColor, handleLineColor, 100, xScale, rollYScale);
-        rollGraph.drawArrow(new Vec3d(format(ArcLenFactorSlider.getValue()), immutable.getRoll(format(ArcLenFactorSlider.getValue())), 0), Color.YELLOW, 2.4, xScale, rollYScale);
+        rollGraph.drawArrow(new Vec3d(format(ArcLenFactorSlider.getValue()), immutable.getRawRoll(format(ArcLenFactorSlider.getValue())), 0), Color.YELLOW, 2.4, xScale, rollYScale);
 
         //yOffset Graph
         state.translate(0, height * 3 + 5, 0);

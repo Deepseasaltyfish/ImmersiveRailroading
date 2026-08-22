@@ -30,7 +30,7 @@ public class TileRailPreview extends BlockEntityTickable {
 	@TagField
 	private PlacementInfo customInfo;
 	@TagField
-	private boolean isAboveRails = false;
+	private boolean isAboveRails = false;//TODO: use Vec3i to replace this
 
 	public ItemStack getItem() {
 		return this.item;
@@ -39,7 +39,7 @@ public class TileRailPreview extends BlockEntityTickable {
 	public void setup(ItemStack stack, PlacementInfo info) {
 		this.item = stack.copy();
 		this.placementInfo = info;
-		this.isAboveRails = BlockUtil.isIRRail(getWorld(), getPos().down()) && getWorld().getBlockEntity(getPos().down(), TileRailBase.class).getRailHeight() < 0.5;
+		this.isAboveRails = placementInfo.placementPosition.y < 0;
 		this.markDirty();
 	}
 
@@ -119,7 +119,7 @@ public class TileRailPreview extends BlockEntityTickable {
 	public boolean onClick(Player player, Player.Hand hand, Facing facing, Vec3d hit) {
 		if (player.isCrouching()) {
 			if (getWorld().isServer) {
-				this.setPlacementInfo(new PlacementInfo(this.getItem(), player.getRotationYawHead(), hit));
+				this.setPlacementInfo(new PlacementInfo(this.getItem(), player.getRotationYawHead(), hit, true, false));
 			}
 			return false;
 		} else if (getWorld().isClient && !player.getHeldItem(hand).is(IRItems.ITEM_GOLDEN_SPIKE)) {
@@ -145,28 +145,39 @@ public class TileRailPreview extends BlockEntityTickable {
 
 	@Override
 	public IBoundingBox getRenderBoundingBox() {
-		return IBoundingBox.INFINITE;
+		return IBoundingBox.INFINITE;// TODO: return real bounding of curve
 	}
 
-	public RailInfo getRailRenderInfo() {
+	public RailInfo getRailRenderInfo() {// Not only for render, but also for build!
 		if (getWorld() != null && item != null && (info == null || info.settings == null)) {
-			info = new RailInfo(item, placementInfo, customInfo);
+			offsetPosition();
 		}
 		return info;
+	}
+
+	public Vec3d getOriginPlacementInfoPos() {
+		return placementInfo.placementPosition;
 	}
 
 	@Override
 	public void markDirty() {
 		super.markDirty();
-        info = new RailInfo(item, placementInfo, customInfo);
+		offsetPosition();
         if (isMulti() && getWorld().isServer) {
 			new PreviewRenderPacket(this).sendToAll();
 		}
 	}
 
+	private void offsetPosition() {
+		PlacementInfo placementInfoOffset = placementInfo.offset(RailSettings.from(item).nearPointData.offset());
+		PlacementInfo customInfoOffset = customInfo == null ? null : customInfo.offset(RailSettings.from(item).farPointData.offset());
+
+		info = new RailInfo(item, placementInfoOffset, customInfoOffset);
+	}
+
 	public boolean isMulti() {
 		if (getRailRenderInfo().getBuilder(getWorld()) instanceof IIterableTrack) {
-			return ((IIterableTrack)getRailRenderInfo().getBuilder(getWorld())).getSubBuilders() != null;
+			return ((IIterableTrack) getRailRenderInfo().getBuilder(getWorld())).getSubBuilders() != null;
 		}
 		return false;
 	}
@@ -186,7 +197,7 @@ public class TileRailPreview extends BlockEntityTickable {
 	@Override
 	public boolean tryBreak(Player entityPlayer) {
 		if (entityPlayer != null && entityPlayer.isCrouching()) {
-			if (this.getRailRenderInfo() != null && this.getRailRenderInfo().build(entityPlayer, isAboveRails() ? getPos().down() : getPos())) {
+			if (this.getRailRenderInfo() != null && this.getRailRenderInfo().build(entityPlayer, getPos())) {
 				new PreviewRenderPacket(this.getWorld(), this.getPos()).sendToAll();
 				return isAboveRails();
 			}

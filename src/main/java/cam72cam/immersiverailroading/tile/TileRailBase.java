@@ -10,6 +10,7 @@ import cam72cam.immersiverailroading.entity.*;
 import cam72cam.immersiverailroading.entity.EntityCoupleableRollingStock.CouplerType;
 import cam72cam.immersiverailroading.entity.physics.SimulationState;
 import cam72cam.immersiverailroading.items.ItemRailAugment;
+import cam72cam.immersiverailroading.items.ItemTrackBlueprint;
 import cam72cam.immersiverailroading.items.ItemTrackExchanger;
 import cam72cam.immersiverailroading.library.*;
 import cam72cam.immersiverailroading.model.part.Door;
@@ -26,10 +27,8 @@ import cam72cam.mod.fluid.ITank;
 import cam72cam.mod.item.*;
 import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
-import cam72cam.mod.render.cutter.Plane;
+import cam72cam.mod.math.Plane;
 import cam72cam.mod.serialization.TagField;
-import cam72cam.mod.serialization.TagMapper;
-import cam72cam.mod.serialization.TagSerializer;
 import cam72cam.mod.sound.Audio;
 import cam72cam.mod.sound.SoundCategory;
 import cam72cam.mod.sound.StandardSound;
@@ -50,7 +49,7 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 	private float bedHeight = 0;
 	@TagField("railHeight")
 	private float railHeight = 0;
-	@TagField(value = "bedFace", mapper = PlaneMapper.class)
+	@TagField(value = "bedFace")
 	private Plane bedFace;
 	@TagField("scaleBedFill")
 	private boolean scaleModel = true;
@@ -226,10 +225,10 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 		this.markDirty();
 	}
 
-	private int getMinSnowLayers() {
+	public int getMinSnowLayers() {
 		float bed = getBedHeight();
 		if (bed >= 0) {
-			return (int) Math.floor(bed * 8);
+			return Math.min((int) Math.floor(bed * 8), 7);
 		} else {
 			return 7;
 		}
@@ -239,14 +238,14 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 		float bedHeight = this.bedHeight;
 		float snowHeight = this.snowLayers / 8.0f;
 		if(bedHeight >= 0) {
-			return Math.max(bedHeight, snowHeight);
+			return Math.max(Math.max(0.001f, bedHeight), snowHeight);
 		} else { // Inverted tile
 			return bedHeight;
 		}
 	}
 	
 	public void handleSnowTick() {
-		if (this.snowLayers < (ConfigDebug.deepSnow ? 8 : 1)) {
+		if (this.snowLayers < (ConfigBalance.deepSnow ? 8 : getMinSnowLayers() + 1)) {
 			this.snowLayers += 1;
 			this.markDirty();
 		}
@@ -293,32 +292,6 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 	public void readUpdate(TagCompound nbt) {
 		if (nbt.hasKey("renderBed")) {
 			this.railBedCache = new ItemStack(nbt.get("renderBed"));
-		}
-	}
-
-	public static class PlaneMapper implements TagMapper<Plane> {
-		public TagAccessor<Plane> apply(Class<Plane> t, String fieldname, TagField tag) {
-			return new TagAccessor<>(
-					(nbt, plane) -> {
-						if(plane == null){
-							nbt.remove(fieldname);
-							return;
-						}
-						TagCompound PlaneTag = new TagCompound();
-						PlaneTag.setVec3d("normal", plane.normal);
-						PlaneTag.setDouble("d", plane.d);
-						nbt.set(fieldname,PlaneTag);
-					},
-					nbt -> {
-						if(!nbt.hasKey(fieldname)){
-							return null;
-						}
-						TagCompound planeTag = nbt.get(fieldname);
-						Vec3d normal = planeTag.getVec3d("normal");
-						double d = planeTag.getDouble("d");
-                        return new Plane(normal, d);
-					}
-			);
 		}
 	}
 	
@@ -431,15 +404,20 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 		return this.willBeReplaced;
 	}
 
-	public void cleanSnow(int snowLevel) {
+	/**
+	 * @param relativeSnowLevel Relative to the snow level of getMinSnowLayers
+	 * */
+	public void cleanSnow(int relativeSnowLevel) {
 		int min = getMinSnowLayers();
-		int target = Math.max(snowLevel, min);
-		int current = this.getSnowLayers();
+		if (relativeSnowLevel < 0) {
+			relativeSnowLevel = 0;
+		}
+		int absTarget = Math.min(relativeSnowLevel + min, 8);
+		int absCurrent = this.getSnowLayers();
 
-		if (current > target) {
-			this.setSnowLayers(target); // 截断到目标值
-			int removed = current - target; // 实际移除的雪层数
-			int snowDown = removed; // 待散播的雪层数
+		if (absCurrent > absTarget) {
+			this.setSnowLayers(absTarget);
+            int snowDown = absCurrent - absTarget;
 
 			for (int i = 1; i <= 3; i++) {
 				Facing[] horiz = Facing.values().clone();
@@ -644,13 +622,13 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 		
 		ticksExisted += 1;
 
-		if (ConfigDebug.snowAccumulateRate > 0 && ((int) (Math.random() * ConfigDebug.snowAccumulateRate * 10) == 0)) {
+		if (ConfigBalance.snowAccumulateRate > 0 && ((int) (Math.random() * ConfigBalance.snowAccumulateRate * 10) == 0)) {
 			if (getWorld().isSnowing(getPos()) && getWorld().canSeeSky(getPos().up())) {
 				this.handleSnowTick();
 			}
 		}
-		if (ConfigDebug.snowMeltRate != 0 && this.snowLayers != 0) {
-			if ((int) (Math.random() * ConfigDebug.snowMeltRate * 10) == 0) {
+		if (ConfigBalance.snowMeltRate != 0 && this.snowLayers > getMinSnowLayers()) {
+			if ((int) (Math.random() * ConfigBalance.snowMeltRate * 10) == 0) {
 				if (!getWorld().isSnowing(getPos())) {
 					this.setSnowLayers(this.snowLayers -= 1);
 				}
@@ -1004,18 +982,15 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 
 	private final SingleCache<Double, IBoundingBox> boundingBox =
 			new SingleCache<>(height -> {
-
+				//TODO: OBB
 				if (height >= 0) {
-					return IBoundingBox.ORIGIN.expand(
-							new Vec3d(1, height, 1)
-					);
+					return IBoundingBox.ORIGIN.expand(new Vec3d(1, height, 1));
 				}
 
 				return IBoundingBox.ORIGIN
 						.expand(new Vec3d(1, 1 + height, 1))
 						.offset(new Vec3d(0, -height, 0));
 			});
-	//TODO: OBB
 
 	@Override
 	public IBoundingBox getBoundingBox() {
@@ -1108,7 +1083,7 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 		}
 		if (stack.isValidTool(ToolType.SHOVEL)) {
 			if (this.getWorld().isServer) {
-				this.cleanSnow(1);
+				this.cleanSnow(0);
 				this.setSnowLayers(0);
 				stack.damageItem(1, player);
 			}
@@ -1120,6 +1095,7 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 	@Override
 	public ItemStack onPick() {
 		ItemStack stack = new ItemStack(IRItems.ITEM_TRACK_BLUEPRINT, 1);
+		ItemTrackBlueprint.Data.writeTo(stack, 0, true);
 
 		TileRail parent = this.getParentTile();
 		if (parent == null) {

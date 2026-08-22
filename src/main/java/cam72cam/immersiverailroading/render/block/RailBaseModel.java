@@ -7,14 +7,13 @@ import cam72cam.immersiverailroading.library.TrackItems;
 import cam72cam.immersiverailroading.render.rail.RailRender;
 import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.tile.TileRailBase;
-import cam72cam.immersiverailroading.util.BlockPlaneHeight;
 import cam72cam.immersiverailroading.util.RailInfo;
 import cam72cam.mod.MinecraftClient;
 import cam72cam.mod.entity.Player;
 import cam72cam.mod.item.ItemStack;
-import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.render.StandardModel;
-import cam72cam.mod.render.cutter.Plane;
+import cam72cam.mod.render.cutter.BlockCutHelper;
+import cam72cam.mod.math.Plane;
 import util.Matrix4;
 
 public class RailBaseModel {
@@ -54,7 +53,7 @@ public class RailBaseModel {
 
 		Matrix4 bedblockMatrix4;
 		if(bedHeight > 0) bedblockMatrix4 = new Matrix4().scale(1, bedHeight, 1);
-		else if(bedHeight == 0) bedblockMatrix4 = new Matrix4().scale(1, 1e-4, 1);
+		else if(bedHeight == 0) bedblockMatrix4 = new Matrix4().scale(1, 1e-3, 1);
 		else bedblockMatrix4 = new Matrix4().translate(0, -bedHeight, 0).scale(1, 1 + bedHeight, 1);
 
 		if (augment != null) {
@@ -62,12 +61,7 @@ public class RailBaseModel {
 			return model;
 		}
 
-		boolean renderSnow = false;
-		if(bedHeight > 0) renderSnow = snow > Math.floor(bedHeight * 8f);
-		else renderSnow = snow > 7;
-
-		if (renderSnow) {
-
+		if (snow > te.getMinSnowLayers()) {
 			float snowHeight = snow / 8f;
 			if(bedFace != null) {
 				boolean isUp = bedHeight >= 0;
@@ -76,22 +70,20 @@ public class RailBaseModel {
 					return model;
 				}
 
-				Vec3d[] beFaceRaw = BlockPlaneHeight.fromPlane(bedFace);
-				float planeMinHeight = BlockPlaneHeight.getCutPlaneMinHeight(beFaceRaw[0], beFaceRaw[1]);
-				float planeMaxHeight = BlockPlaneHeight.getCutPlaneMaxHeight(beFaceRaw[0], beFaceRaw[1]);
+				float planeMinHeight = BlockCutHelper.getCutPlaneMinHeight(bedFace);
+				float planeMaxHeight = BlockCutHelper.getCutPlaneMaxHeight(bedFace);
 
 				if (planeMaxHeight <= snowHeight) {
-					model.addSnow(snow, new Matrix4(), null);
+					model.addSnow(snow, new Matrix4(), BlockCutHelper.createBottomSidePlane(bedFace));
 				} else if (planeMinHeight >= snowHeight) {
 					model.addSnow(8, new Matrix4(), bedFace);
 				} else {
-					model.addSnow(snow, new Matrix4(), null);
+					model.addSnow(snow, new Matrix4(), BlockCutHelper.createBottomSidePlane(bedFace));
 					model.addSnow(8, new Matrix4(), bedFace);
 				}
 			} else {
-				model.addSnow(snow, new Matrix4(), null);
+				model.addSnow(snow, new Matrix4());
 			}
-
 
 			return model;
 		} else if (!bed.isEmpty()) {

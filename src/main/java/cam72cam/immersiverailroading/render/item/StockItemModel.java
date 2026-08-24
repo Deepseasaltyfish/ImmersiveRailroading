@@ -7,11 +7,10 @@ import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.model.StockModel;
 import cam72cam.immersiverailroading.registry.EntityRollingStockDefinition;
 import cam72cam.mod.item.ItemStack;
-import cam72cam.mod.model.common.mesh.Model;
+import cam72cam.mod.model.obj.OBJModel;
 import cam72cam.mod.render.ItemRender;
 import cam72cam.mod.render.StandardModel;
-import cam72cam.mod.render.common.ModelConfig;
-import cam72cam.mod.render.common.ModelRenderer;
+import cam72cam.mod.render.obj.OBJRender;
 import cam72cam.mod.render.opengl.RenderState;
 import cam72cam.mod.resource.Identifier;
 import cam72cam.mod.world.World;
@@ -37,9 +36,8 @@ public class StockItemModel implements ItemRender.ISpriteItemModel {
 				.translate(0.5, 0, 0)
 				.rotate(-90, 0, 1, 0)
 				.scale(scale, scale, scale);
-		ModelConfig cfg = new ModelConfig().variant(data.texture);
-		try (ModelRenderer.Binding vbo = ModelRenderer.getRendererFor(data.def.getModel().model).bind(cfg, state)) {
-			vbo.enqueueTransparent(data.def.itemGroups);
+		try (OBJRender.Binding vbo = data.def.getModel().binder().texture(data.texture).bind(state)) {
+			vbo.draw(data.def.itemGroups);
 		}
 	}
 
@@ -54,7 +52,7 @@ public class StockItemModel implements ItemRender.ISpriteItemModel {
 		return new Identifier(
 				ImmersiveRailroading.MODID,
 				data.def.defID + "_" +
-						data.def.getModel().model.hash + "_" +
+						data.def.getModel().hash + "_" +
 						(!ConfigGraphics.stockItemVariants || data.texture == null ? "" : data.texture)
 		);
 	}
@@ -73,17 +71,15 @@ public class StockItemModel implements ItemRender.ISpriteItemModel {
 			state.scale(scale, scale, scale / (modelLength / 2));
 			state.rotate(85, 0, 1, 0);
 
-			ModelConfig cfg = new ModelConfig().synchronous().lod(StockModel.LOD_SMALL);
+			OBJModel.Binder binder = def.getModel().binder().synchronous().lod(StockModel.LOD_SMALL);
 			if (ConfigGraphics.stockItemVariants) {
-				cfg.variant(data.texture);
+				binder.texture(data.texture);
 			}
 
-			Model model = def.getModel().model;
-			try (ModelRenderer.Binding vbo =
-						 ModelRenderer.getRendererFor(model).bind(cfg, state, true)) {
-				vbo.enqueueTransparent(def.itemGroups);
+			try (OBJRender.Binding vbo = binder.bind(state, true)) {
+				vbo.draw(def.itemGroups);
 			}
-			model.free();
+			def.getModel().free();
 		});
 	}
 }

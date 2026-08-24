@@ -1,10 +1,9 @@
 package cam72cam.immersiverailroading.render.item;
 
 import cam72cam.immersiverailroading.ImmersiveRailroading;
-import cam72cam.mod.model.common.ModelLoader;
-import cam72cam.mod.model.common.mesh.Model;
+import cam72cam.mod.model.obj.OBJModel;
 import cam72cam.mod.render.ItemRender;
-import cam72cam.mod.render.common.ModelRenderer;
+import cam72cam.mod.render.obj.OBJRender;
 import cam72cam.mod.item.ItemStack;
 import cam72cam.mod.render.StandardModel;
 import cam72cam.mod.render.opengl.RenderState;
@@ -15,14 +14,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class RailCastItemRender implements ItemRender.IItemModel {
-	private static Model model;
+	private static OBJModel model;
 	private static List<String> groups;
 
 	@Override
 	public StandardModel getModel(World world, ItemStack stack) {
 		if (model == null) {
 			try {
-				model = ModelLoader.load(new Identifier(ImmersiveRailroading.MODID, "models/multiblocks/rail_machine.obj"));
+				model = new OBJModel(new Identifier(ImmersiveRailroading.MODID, "models/multiblocks/rail_machine.obj"), 0.05f, null);
 				groups = new ArrayList<>();
 
 				for (String groupName : model.groups())  {
@@ -40,8 +39,8 @@ public class RailCastItemRender implements ItemRender.IItemModel {
 			state.rotate(90, 1, 0, 0);
 			state.translate(0, -1, 1);
 			state.translate(-0.5, 0.6, 0.6);
-			try (ModelRenderer.Binding bound = ModelRenderer.getRendererFor(model).bind(state)) {
-				bound.enqueueOpaque(groups);
+			try (OBJRender.Binding ctx = model.binder().bind(state)) {
+				ctx.draw(groups);
 			}
 		});
 	}

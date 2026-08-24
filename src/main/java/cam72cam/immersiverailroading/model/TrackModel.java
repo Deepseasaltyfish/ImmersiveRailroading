@@ -6,9 +6,9 @@ import cam72cam.immersiverailroading.util.DataBlock;
 import cam72cam.immersiverailroading.util.MathUtil;
 import cam72cam.immersiverailroading.util.RailInfo;
 import cam72cam.mod.math.Vec3d;
-import cam72cam.mod.model.common.ModelLoader;
-import cam72cam.mod.model.common.mesh.Model;
-import cam72cam.mod.model.common.mesh.ModelSetBuilder;
+import cam72cam.mod.model.obj.OBJModel;
+import cam72cam.mod.render.obj.OBJRender;
+import cam72cam.mod.render.opengl.VBO;
 import cam72cam.mod.resource.Identifier;
 import trackapi.lib.Gauges;
 import util.Matrix4;
@@ -18,13 +18,11 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public class TrackModel {
-    public final Model model;
-
+public class TrackModel extends OBJModel{
     private TrackOrder order;
     //Get randomized idents' real ident
     private Map<String, Supplier<String>> randomMap;
-    //Map primitive idents to Model
+    //Map primitive idents to OBJModel
     private final Map<String, Map<TrackModelPart, List<String>>> groupNamesMapper;
     private final String compare;
     private final double size;
@@ -32,22 +30,22 @@ public class TrackModel {
     public final double spacing;
 
     public TrackModel(String condition, Identifier resource, double modelGaugeM, double spacing, boolean isSingle) throws Exception {
-        this.model = ModelLoader.load(resource, Gauges.STANDARD / modelGaugeM);
+        super(resource, 0, Gauges.STANDARD / modelGaugeM);
         this.compare = condition.substring(0, 1);
         this.groupNamesMapper = new HashMap<>();
         if(isSingle) {
             Map<TrackModelPart, List<String>> groups = new HashMap<>();
             for(TrackModelPart part : TrackModelPart.values()){
-                List<String> parts = model.groups().stream().filter(part::is).collect(Collectors.toList());
+                List<String> parts = this.groups().stream().filter(part::is).collect(Collectors.toList());
                 groups.put(part, parts);
             }
             groupNamesMapper.put("single", groups);
             randomMap = Collections.singletonMap("single", () -> "single");
             this.order = new TrackOrder(Collections.singletonList("single"));
-            List<String> rails = model.groups().stream()
-                                      .filter(group -> TrackModelPart.RAIL_LEFT.is(group) || TrackModelPart.RAIL_RIGHT.is(group))
-                                      .collect(Collectors.toList());
-            this.height = model.maxOfGroups(rails).y;
+            List<String> rails = this.groups().stream()
+                                     .filter(group -> TrackModelPart.RAIL_LEFT.is(group) || TrackModelPart.RAIL_RIGHT.is(group))
+                                     .collect(Collectors.toList());
+            this.height = maxOfGroup(rails).y;
         }
         this.size = Double.parseDouble(condition.substring(1));
         this.spacing = spacing * (Gauges.STANDARD / modelGaugeM);
@@ -56,7 +54,7 @@ public class TrackModel {
     public static TrackModel parse(String condition, DataBlock block, double modelGaugeM, double spacing) throws Exception{
         Map<String, Supplier<String>> mapper = new HashMap<>();
         Identifier identifier = block.getValue("model").asIdentifier();
-        TrackModel trackModel = new TrackModel(condition, identifier, modelGaugeM, spacing, false);
+        TrackModel model = new TrackModel(condition, identifier, modelGaugeM, spacing, false);
         Function<List<DataBlock.Value>, List<String>> toString = s -> s.stream()
                                                                        .map(DataBlock.Value::asString)
                                                                        .collect(Collectors.toList());
@@ -85,14 +83,14 @@ public class TrackModel {
                                  .map(Map.Entry::getValue)
                                  .forEach(rails::addAll);
 
-                height[0] = Math.max(height[0], trackModel.model.maxOfGroups(rails).y);
-                trackModel.groupNamesMapper.put(ident, groups);
+                height[0] = Math.max(height[0], model.maxOfGroup(rails).y);
+                model.groupNamesMapper.put(ident, groups);
                 mapper.put(ident, () -> ident);
             });
         }
 
         if (height[0] != Double.MIN_VALUE) {
-            trackModel.height = height[0];
+            model.height = height[0];
         } else {
             throw new IllegalArgumentException("Unable to get any rail in model groups definition!");
         }
@@ -145,9 +143,9 @@ public class TrackModel {
             throw new IllegalArgumentException("Must contains \"order\" field with advanced track definition");
         }
 
-        trackModel.order = trackOrder;
-        trackModel.randomMap = mapper;
-        return trackModel;
+        model.order = trackOrder;
+        model.randomMap = mapper;
+        return model;
     }
 
     public boolean canRender(double gauge) {
@@ -159,14 +157,13 @@ public class TrackModel {
         }
     }
 
-    public Model getModel(RailInfo info, List<VecYPR> data) {
-        ModelSetBuilder builder = ModelSetBuilder.of(this.model);
-
+    public VBO getModel(RailInfo info, List<VecYPR> data) {
         if(info.settings.type.isTable()){
-            return renderTable(info, data, builder);
+            return renderTable(info, data);
         }
 
         //Otherwise use generated order to build
+        OBJRender.Builder builder = this.binder().builder();
         List<String> names = order.getRenderOrder(data.size());
         for (int i = 0; i < names.size(); i++) {
             String modelKey = randomMap.get(names.get(i)).get();
@@ -178,7 +175,8 @@ public class TrackModel {
         return builder.build();
     }
 
-    private Model renderTable(RailInfo info, List<VecYPR> data, ModelSetBuilder builder) {
+    private VBO renderTable(RailInfo info, List<VecYPR> data) {
+        OBJRender.Builder builder = this.binder().builder();
         Map<TrackModelPart, List<String>> groupNames = this.groupNamesMapper.values().stream().findFirst().get();
 
         for (VecYPR piece : data) {
@@ -188,7 +186,8 @@ public class TrackModel {
         return builder.build();
     }
 
-    private void renderPiece(RailInfo info, VecYPR piece, ModelSetBuilder builder, Map<TrackModelPart, List<String>> groupNames) {
+    private void renderPiece(RailInfo info, VecYPR piece,
+                             OBJRender.Builder builder, Map<TrackModelPart, List<String>> groupNames) {
         Matrix4 matrix = new Matrix4();
         matrix.translate(piece.x, piece.y, piece.z);
 
@@ -207,7 +206,7 @@ public class TrackModel {
         List<String> tables = groupNames.get(TrackModelPart.TABLE);
 
         if(piece.getParts().contains(TrackModelPart.TABLE)){
-            builder.append(tables, matrix.copy());
+            builder.draw(tables, matrix.copy());
         }
 
         if (piece.getLength() != -1) {
@@ -225,7 +224,7 @@ public class TrackModel {
                       .filter(part -> part != TrackModelPart.TABLE)
                       .map(groupNames::get).forEach(groups::addAll);
         }
-        builder.append(groups, matrix);
+        builder.draw(groups, matrix);
         if(!piece.getChildren().isEmpty()){
             for(VecYPR vec : piece.getChildren()){
                 renderPiece(info, vec, builder, groupNames);

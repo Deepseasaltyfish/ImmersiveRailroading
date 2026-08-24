@@ -5,7 +5,6 @@ import cam72cam.immersiverailroading.registry.DefinitionManager;
 import cam72cam.mod.render.ItemRender;
 import cam72cam.mod.item.ItemStack;
 import cam72cam.mod.render.StandardModel;
-import cam72cam.mod.render.common.ModelRenderer;
 import cam72cam.mod.render.obj.OBJRender;
 import cam72cam.mod.world.World;
 
@@ -22,7 +21,7 @@ public class RailItemRender implements ItemRender.IItemModel {
 			baseRailModel = DefinitionManager.getTracks().stream().findFirst().get().getTrackForGauge(0);
 			List<String> groups = new ArrayList<>();
 
-			for (String groupName : baseRailModel.model.groups())  {
+			for (String groupName : baseRailModel.groups())  {
 				if (groupName.contains("RAIL_LEFT")) {
 					groups.add(groupName);
 				}
@@ -33,8 +32,8 @@ public class RailItemRender implements ItemRender.IItemModel {
 
 		return new StandardModel().addCustom((state, pt) -> {
 			state.translate(0.5, 0.2, -0.3);
-			try (ModelRenderer.Binding vbo = ModelRenderer.getRendererFor(baseRailModel.model).bind(state)) {
-                vbo.enqueueOpaque(left);
+			try (OBJRender.Binding vbo = baseRailModel.binder().bind(state)) {
+                vbo.draw(left);
             }
 		});
 	}

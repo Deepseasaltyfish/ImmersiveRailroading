@@ -7,8 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        branch: [1.12.2-forge,
-                 1.16.5-forge,
+        branch: [1.21.1-neoforge
         ]
     steps:
     - uses: actions/checkout@v5

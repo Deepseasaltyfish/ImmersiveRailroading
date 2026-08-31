@@ -16,11 +16,9 @@ import cam72cam.immersiverailroading.model.part.TrackFollower.TrackFollowers;
 import cam72cam.immersiverailroading.registry.EntityRollingStockDefinition;
 import cam72cam.immersiverailroading.registry.EntityRollingStockDefinition.SoundDefinition;
 import cam72cam.mod.MinecraftClient;
-import cam72cam.mod.model.common.ModelLoader;
-import cam72cam.mod.model.common.mesh.Model;
+import cam72cam.mod.model.obj.OBJModel;
 import cam72cam.mod.render.OptiFine;
-import cam72cam.mod.render.common.ModelConfig;
-import cam72cam.mod.render.common.ModelRenderer;
+import cam72cam.mod.render.obj.OBJRender;
 import cam72cam.mod.render.opengl.RenderState;
 import util.Matrix4;
 
@@ -29,9 +27,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-public class StockModel<ENTITY extends EntityMoveableRollingStock, DEFINITION extends EntityRollingStockDefinition> {
-    public final Model model;
-
+public class StockModel<ENTITY extends EntityMoveableRollingStock, DEFINITION extends EntityRollingStockDefinition> extends OBJModel {
     private final DEFINITION def;
     public final List<ModelComponent> allComponents;
     protected ModelState base;
@@ -69,16 +65,15 @@ public class StockModel<ENTITY extends EntityMoveableRollingStock, DEFINITION ex
     private final SwaySimulator sway;
 
     public StockModel(DEFINITION def) throws Exception {
-        this.model = ModelLoader.load(def.modelLoc, def.internal_model_scale, def.textureNames.keySet(), ConfigGraphics.textureCacheSeconds,
-                                      maxSize -> {
-                                          List<Integer> lodSizes = new ArrayList<>();
-                                          lodSizes.add(LOD_LARGE);
-                                          lodSizes.add(LOD_SMALL);
-                                          return lodSizes;
-                                      });
+        super(def.modelLoc, def.darken, def.internal_model_scale, def.textureNames.keySet(), ConfigGraphics.textureCacheSeconds, i -> {
+            List<Integer> lodSizes = new ArrayList<>();
+            lodSizes.add(LOD_LARGE);
+            lodSizes.add(LOD_SMALL);
+            return lodSizes;
+        });
 
         this.def = def;
-        boolean hasInterior = model.groups().stream().anyMatch(x -> x.contains("INTERIOR"));
+        boolean hasInterior = this.groups().stream().anyMatch(x -> x.contains("INTERIOR"));
 
         this.doors = new ArrayList<>();
         this.seats = new ArrayList<>();
@@ -300,7 +295,7 @@ public class StockModel<ENTITY extends EntityMoveableRollingStock, DEFINITION ex
                 .rescale_normal(true)
                 .scale(stock.gauge.scale(), stock.gauge.scale(), stock.gauge.scale());
 
-        if ((ConfigGraphics.OptifineEntityShaderOverrideAll || !model.getNormals().isEmpty() || !model.getSpeculars().isEmpty()) &&
+        if ((ConfigGraphics.OptifineEntityShaderOverrideAll || !normals.isEmpty() || !speculars.isEmpty()) &&
                 ConfigGraphics.OptiFineEntityShader != OptiFine.Shaders.Entities) {
             state = state.shader(ConfigGraphics.OptiFineEntityShader);
         }
@@ -322,9 +317,9 @@ public class StockModel<ENTITY extends EntityMoveableRollingStock, DEFINITION ex
             }
         }
 
-        ModelConfig cfg = new ModelConfig().variant(stock.getTexture()).lod(lod_level);
+        Binder binder = binder().texture(stock.getTexture()).lod(lod_level);
         try (
-                ModelRenderer.Binding bound = ModelRenderer.getRendererFor(this.model).bind(cfg, state);
+                OBJRender.Binding bound = binder.bind(state);
         ) {
             double backup = stock.distanceTraveled;
 

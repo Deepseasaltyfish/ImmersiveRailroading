@@ -19,9 +19,9 @@ import java.util.List;
 public class MultiPreviewRender {
     private static ExpireableMap<Pair<World, Vec3i>, TileRailPreview> previews = new ExpireableMap<>();
 
-//    static {
-//        GlobalRender.registerRender(MultiPreviewRender::render);
-//    }
+    static {
+        GlobalRender.registerRender(MultiPreviewRender::render);
+    }
 
     private static void render(RenderState state, float partialTicks) {
         state.blend(new BlendMode(BlendMode.GL_CONSTANT_ALPHA, BlendMode.GL_ONE).constantColor(1, 1, 1, 0.7f)).lightmap(1, 1);

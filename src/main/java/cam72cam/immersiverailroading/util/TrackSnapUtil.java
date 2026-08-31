@@ -67,9 +67,9 @@ public class TrackSnapUtil {
                                 && Math.abs(rail.getTrackGauges()[0] - stackInfo.gauge.value()) <= 1.0E-6) {
 
                             BuilderBase builder = rail.info.getBuilder(world);
-                            if(builder instanceof BuilderSwitch) {
-                                builder = rail.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world);
-                            }
+//                            if(builder instanceof BuilderSwitch) {
+//                                builder = rail.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world);
+//                            }
                             List<VecYPR> renderData = builder.getRenderData();
 
                             if (!renderData.isEmpty()) {

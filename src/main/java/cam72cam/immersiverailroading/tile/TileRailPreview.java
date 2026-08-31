@@ -176,9 +176,9 @@ public class TileRailPreview extends BlockEntityTickable {
 	}
 
 	public boolean isMulti() {
-		if (getRailRenderInfo().getBuilder(getWorld()) instanceof IIterableTrack) {
-			return ((IIterableTrack) getRailRenderInfo().getBuilder(getWorld())).getSubBuilders() != null;
-		}
+//		if (getRailRenderInfo().getBuilder(getWorld()) instanceof IIterableTrack) {
+//			return ((IIterableTrack) getRailRenderInfo().getBuilder(getWorld())).getSubBuilders() != null;
+//		}
 		return false;
 	}
 

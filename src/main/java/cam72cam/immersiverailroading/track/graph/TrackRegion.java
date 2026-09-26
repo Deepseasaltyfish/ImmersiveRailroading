@@ -10,6 +10,7 @@ public class TrackRegion {//todo 按照chunk pos/pos排序？ hashset?
     private final Map<Vec3i, TrackMultiGeometrySegment> trackBlocks;
     boolean needsWriteToDisk;
     boolean dirty;
+    boolean isEmpty;
 
     public TrackRegion() {
         trackBlocks = new HashMap<>();
@@ -64,6 +65,23 @@ public class TrackRegion {//todo 按照chunk pos/pos排序？ hashset?
     public TrackMultiGeometrySegment getTrackBlock(Vec3i pos) {
         synchronized (trackBlocks) {
             return trackBlocks.get(pos);
+        }
+    }
+
+    public boolean isEmpty() {
+        synchronized (trackBlocks) {
+            return trackBlocks.isEmpty();
+        }
+    }
+
+    public boolean removeTrackBlock(Vec3i pos) {
+        synchronized (trackBlocks) {
+            if (trackBlocks.remove(pos) == null) {
+                return false;
+            }
+            needsWriteToDisk = true;
+            dirty = true;
+            return true;
         }
     }
 

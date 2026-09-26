@@ -28,7 +28,8 @@ public class TrackMultiGeometrySegment {
         paths.add(branch);
 
 //        tableIndex = ;
-        switchState = trackBlock.isSwitchForced() ? trackBlock.info.switchForced.ordinal() : trackBlock.info.switchState.ordinal();
+        //todo: DO NOT use isSwitchForced()! it may cause crash!
+//        switchState = trackBlock.isSwitchForced() ? trackBlock.info.switchForced.ordinal() : trackBlock.info.switchState.ordinal();
     }
 
     public void updateSwitchSate(SwitchState switchState) {

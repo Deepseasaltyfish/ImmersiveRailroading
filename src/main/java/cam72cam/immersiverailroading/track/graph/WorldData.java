@@ -103,6 +103,14 @@ public class WorldData {
         return null;
     }
 
+    public boolean removeTrackBlock(Vec3i pos) {
+        TrackRegion region = getRegion(pos, false);
+        if (region == null) {
+            return false;
+        }
+        return region.removeTrackBlock(pos);
+    }
+
     public void setTrackBlock(Vec3i pos, TrackMultiGeometrySegment block) {
         getRegion(pos, true).setTrackBlock(pos, block);
     }
@@ -114,18 +122,39 @@ public class WorldData {
     private void saveInternal() {
         if (!directory.exists()) {
             if (!directory.mkdirs()) {
-                throw new RuntimeException(String.format("Unable to create ImmersiveRailroading data directory %s!", directory));
+                throw new RuntimeException(String.format(
+                        "Unable to create ImmersiveRailroading data directory %s!", directory));
             }
         }
         if (!directory.isDirectory()) {
-            throw new RuntimeException(String.format("Expected ImmersiveRailroading data directory %s is not a directory!", directory));
+            throw new RuntimeException(String.format(
+                    "Expected ImmersiveRailroading data directory %s is not a directory!", directory));
         }
 
-        for (Map.Entry<Long, TrackRegion> entry : regions.entrySet()) {
-            if (entry.getValue().needsWriteToDisk) {
+        synchronized (regions) {
+            Iterator<Map.Entry<Long, TrackRegion>> iterator = regions.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<Long, TrackRegion> entry = iterator.next();
+                TrackRegion region = entry.getValue();
+
+                if (!region.needsWriteToDisk) {
+                    continue;
+                }
+
+                File file = regionFile(entry.getKey());
+
+                if (region.isEmpty()) {
+                    // remove from disk and ram
+                    if (file.exists() && !file.delete()) {
+                        throw new RuntimeException(String.format("Unable to delete empty region file %s!", file));
+                    }
+                    iterator.remove();
+                    continue;
+                }
+
                 try {
-                    Util.writeBuffer(regionFile(entry.getKey()), entry.getValue().write());
-                    entry.getValue().needsWriteToDisk = false;
+                    Util.writeBuffer(file, region.write());
+                    region.needsWriteToDisk = false;
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
@@ -197,13 +226,18 @@ public class WorldData {
                 }
                 for (Long trackingRegion : trackingRegions) {
                     TrackRegion region = regions.get(trackingRegion);
-                    if (region != null) {
-                        // new regions to the client should be checked every tick.
-                        // modifications should probably be every 5-20 ticks?
-                        if (!sentRegions.contains(trackingRegion) || region.dirty) {
-                            sentRegions.add(trackingRegion);
-                            new RegionPacket(world, trackingRegion, region).sendToPlayer(player);
+
+                    if (region == null) {
+                        if (sentRegions.contains(trackingRegion)) {
+                            sentRegions.remove(trackingRegion);
+                            new RegionPacket(world, trackingRegion, null).sendToPlayer(player);
                         }
+                        continue;
+                    }
+
+                    if (!sentRegions.contains(trackingRegion) || region.dirty) {
+                        sentRegions.add(trackingRegion);
+                        new RegionPacket(world, trackingRegion, region).sendToPlayer(player);
                     }
                 }
             }

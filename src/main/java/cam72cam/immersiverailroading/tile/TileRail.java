@@ -9,6 +9,8 @@ import cam72cam.immersiverailroading.library.SwitchState;
 import cam72cam.immersiverailroading.library.TrackItems;
 import cam72cam.immersiverailroading.registry.DefinitionManager;
 import cam72cam.immersiverailroading.track.TrackBase;
+import cam72cam.immersiverailroading.track.graph.TrackMultiGeometrySegment;
+import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.immersiverailroading.util.MathUtil;
 import cam72cam.immersiverailroading.util.RailInfo;
 import cam72cam.mod.entity.boundingbox.IBoundingBox;
@@ -276,6 +278,7 @@ public class TileRail extends TileRailBase {
 	public void onBreak() {
 		this.spawnDrops();
 		super.onBreak();
+		WorldData.get(getWorld()).removeTrackBlock(getPos());
 	}
 
     @Override
@@ -308,5 +311,16 @@ public class TileRail extends TileRailBase {
 			return null;
 		}
 		return info.settings.railBed;
+	}
+
+	@Override
+	public void load(TagCompound nbt) {
+		super.load(nbt);
+		if (getWorld().isServer) {
+			if(WorldData.get(getWorld()).getTrackBlock(getPos()) == null) {
+				TrackMultiGeometrySegment trackBlock = new TrackMultiGeometrySegment(this, getWorld(), getPos());
+				WorldData.get(getWorld()).setTrackBlock(getPos(), trackBlock);
+			}
+		}
 	}
 }

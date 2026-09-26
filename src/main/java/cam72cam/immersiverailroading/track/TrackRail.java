@@ -3,7 +3,10 @@ package cam72cam.immersiverailroading.track;
 import cam72cam.immersiverailroading.IRBlocks;
 import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.tile.TileRailBase;
+import cam72cam.immersiverailroading.track.graph.TrackMultiGeometrySegment;
+import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.mod.math.Vec3i;
+import cam72cam.mod.world.World;
 
 public class TrackRail extends TrackBase {
 
@@ -17,6 +20,11 @@ public class TrackRail extends TrackBase {
 
 		tileRail.info = builder.info.offset(builder.pos.subtract(tileRail.getPos()));
 		tileRail.setDrops(builder.drops);
+
+		if(actuallyPlace) {
+			tileRail.setBuildTimeMs(System.currentTimeMillis());
+			WorldData.get(this.builder.world).setTrackBlock(tileRail.getPos(), new TrackMultiGeometrySegment(tileRail, this.builder.world, tileRail.getPos()));
+		}
 
 		return tileRail;
 	}

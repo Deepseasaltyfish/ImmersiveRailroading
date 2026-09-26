@@ -27,6 +27,9 @@ public class TileRail extends TileRailBase {
 	@TagField("info")
 	public RailInfo info;
 
+	@TagField("buildTimeMs")
+	private long buildTimeMs;
+
 	@TagField("tableIndex")
 	private int tableIndex;
 
@@ -101,6 +104,14 @@ public class TileRail extends TileRailBase {
 		Vec3i offset = pos.subtract(parent.getPos().subtract(mainOffset)).rotate(Rotation.from(parent.info.placementInfo.facing().getOpposite()));
 
 		this.tableIndex = MathUtil.clamp(Math.round(Math.abs((float) offset.x) / this.info.settings.transfertableEntrySpacing), 0, info.settings.transfertableEntryCount - 1);
+	}
+
+	public void setBuildTimeMs(long buildTimeMs) {
+		this.buildTimeMs = buildTimeMs;
+	}
+
+	public long getBuildTimeMs() {
+		return buildTimeMs;
 	}
 
 	@Override

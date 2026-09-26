@@ -1,10 +1,16 @@
 package cam72cam.immersiverailroading.track.graph;
 
+import cam72cam.immersiverailroading.items.nbt.RailSettings;
 import cam72cam.immersiverailroading.library.Gauge;
+import cam72cam.immersiverailroading.library.TrackDirection;
+import cam72cam.immersiverailroading.library.TrackItems;
+import cam72cam.immersiverailroading.library.TrackSmoothing;
 import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.track.BuilderCubicCurve;
 import cam72cam.immersiverailroading.track.CubicCurve;
-import cam72cam.immersiverailroading.util.RollAndOffsetInfo;
+import cam72cam.immersiverailroading.track.VecYPR;
+import cam72cam.immersiverailroading.util.*;
+import cam72cam.mod.item.ItemStack;
 import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;
@@ -16,16 +22,22 @@ import java.util.List;
 public class TrackSingleGeometrySegment {
     protected final Gauge gauge;
     protected final int switchIdex;
+    protected final float yaw;
     protected final CubicCurve baseCurve;
     protected final RollAndOffsetInfo rollAndOffsetInfo;
     protected final String referenceTrack;// for path piece height
+    protected final TrackFaceTransSetting.FacePivotType facePivotType;
+    protected final Vec3d facePivotOffset;
 
     public TrackSingleGeometrySegment(TileRail trackBlock, World world, Vec3i pos, int switchIndex, Gauge gauge) {// todo: switch, gauge
         this.gauge = trackBlock.info.settings.gauge;
         this.switchIdex = switchIndex;
+        this.yaw = trackBlock.info.placementInfo.yaw;
         this.baseCurve = new BuilderCubicCurve(trackBlock.info, world, pos, false).getCurve();
         this.rollAndOffsetInfo = trackBlock.info.settings.rollAndOffsetInfo;
         this.referenceTrack = trackBlock.info.settings.track;
+        this.facePivotType = trackBlock.info.settings.trackFaceTransSetting.facePivotType();
+        this.facePivotOffset = trackBlock.info.settings.trackFaceTransSetting.facePivotOffset();
     }
 
     public TrackSingleGeometrySegment(ByteBuffer buffer) {
@@ -34,10 +46,19 @@ public class TrackSingleGeometrySegment {
             throw new RuntimeException(String.format("Invalid single track geometry segment data version %d", version));
         }
 
+        double x,y,z;
+
         switchIdex = buffer.getInt(); // switch index
         gauge = Gauge.from(buffer.getDouble()); // gauge
         referenceTrack = TrackRegionUtil.readString(buffer);// referenceTrack
+        facePivotType = TrackFaceTransSetting.FacePivotType.byOrder(buffer.getInt()); // facePivotType
+        // facePivotOffset
+        x = buffer.getDouble();
+        y = buffer.getDouble();
+        z = buffer.getDouble();
+        facePivotOffset = new Vec3d(x, y, z);
 
+        yaw = buffer.getFloat(); // yaw
         // baseCurve p1.xyz ctrl1.xyz ctrl2.xyz p2.xyz
         double[] baseCurveArgs = new double[3 * 4];
         for(int i = 0; i < 3 * 4; i++) {
@@ -48,7 +69,7 @@ public class TrackSingleGeometrySegment {
                 new Vec3d(baseCurveArgs[3], baseCurveArgs[4], baseCurveArgs[5]),
                 new Vec3d(baseCurveArgs[6], baseCurveArgs[7], baseCurveArgs[8]),
                 new Vec3d(baseCurveArgs[9], baseCurveArgs[10], baseCurveArgs[11])
-        );// todo 外部参数应该是不需要的，需要检查
+        );
 
         RollAndOffsetInfo.RollAndVertOffsetAlignType rollOffsetType = RollAndOffsetInfo.RollAndVertOffsetAlignType.byOrder(buffer.getInt()); // rollAndOffsetInfo.rollOffsetType
         boolean degreeMode = buffer.getShort() == 1; // rollAndOffsetInfo.degreeMode
@@ -66,7 +87,6 @@ public class TrackSingleGeometrySegment {
 
         for(int i = 0; i < count; i++) {
             arcLenFactors.add(buffer.getDouble()); // rollAndOffsetInfo.arcLenFactors
-            double x,y,z;
 
             // rollAndOffsetInfo.rolls.xyz
             x = buffer.getDouble();
@@ -113,7 +133,10 @@ public class TrackSingleGeometrySegment {
         bytes += Integer.BYTES; // switch index
         bytes += Double.BYTES; // gauge
         bytes += TrackRegionUtil.sizeString(referenceTrack); // referenceTrack
+        bytes += Integer.BYTES; // facePivotType
+        bytes += Double.BYTES * 3; // facePivotOffset
 
+        bytes += Float.BYTES; // yaw
         // baseCurve p1.xyz ctrl1.xyz ctrl2.xyz p2.xyz
         bytes += Double.BYTES * 3 * 4;
 
@@ -141,6 +164,7 @@ public class TrackSingleGeometrySegment {
         buffer.putDouble(gauge.value()); // gauge
         TrackRegionUtil.writeString(referenceTrack, buffer);// referenceTrack
 
+        buffer.putFloat(yaw); // yaw
         // baseCurve p1.xyz ctrl1.xyz ctrl2.xyz p2.xyz
         buffer.putDouble(baseCurve.p1.x);
         buffer.putDouble(baseCurve.p1.y);
@@ -154,6 +178,12 @@ public class TrackSingleGeometrySegment {
         buffer.putDouble(baseCurve.p2.x);
         buffer.putDouble(baseCurve.p2.y);
         buffer.putDouble(baseCurve.p2.z);
+
+        buffer.putInt(facePivotType.ordinal()); // facePivotType
+        // facePivotOffset
+        buffer.putDouble(facePivotOffset.x);
+        buffer.putDouble(facePivotOffset.y);
+        buffer.putDouble(facePivotOffset.z);
 
         buffer.putInt(rollAndOffsetInfo.rollOffsetType().ordinal()); // rollAndOffsetInfo.rollOffsetType
         buffer.putShort(rollAndOffsetInfo.degreeMode() ? (short)1 : (short)0); // rollAndOffsetInfo.degreeMode
@@ -187,5 +217,25 @@ public class TrackSingleGeometrySegment {
             buffer.putDouble(rollAndOffsetInfo.zOffsetCtrls().get(i).y);
             buffer.putDouble(rollAndOffsetInfo.zOffsetCtrls().get(i).z);
         }
+    }
+
+    public BuilderCubicCurve getBuilder(World world, Vec3i pos) { // we can get renderData the same as origin
+        RailSettings settings = new RailSettings(
+                gauge, referenceTrack,
+                TrackItems.CUSTOM, TrackItems.CUSTOM,
+                10, 90, 1, TrackSmoothing.NEITHER,
+                new EndPointData(0), new EndPointData(0),
+                rollAndOffsetInfo, rollAndOffsetInfo,
+                TrackDirection.NONE, new TrackFaceTransSetting(0.1f, facePivotType, facePivotOffset),
+                ItemStack.EMPTY, ItemStack.EMPTY,
+                false, false,
+                0, 0//todo
+        );
+        RailInfo info = new RailInfo(
+                settings,
+                new PlacementInfo(baseCurve.p1, TrackDirection.NONE, yaw, baseCurve.ctrl1),
+                new PlacementInfo(baseCurve.p2, TrackDirection.NONE, yaw, baseCurve.ctrl2) // well this is how it works, internal override logic...
+        );
+        return new BuilderCubicCurve(info, world, pos, false);
     }
 }

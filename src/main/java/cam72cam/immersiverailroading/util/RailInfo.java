@@ -117,6 +117,10 @@ public class RailInfo {
 		this(RailSettings.from(settings), placementInfo, customInfo, SwitchState.NONE, SwitchState.NONE, 0);
 	}
 
+	public RailInfo(RailSettings settings, PlacementInfo placementInfo, PlacementInfo customInfo) {
+		this(settings, placementInfo, customInfo, SwitchState.NONE, SwitchState.NONE, 0);
+	}
+
 	public RailInfo withSettings(Consumer<RailSettings.Mutable> mod) {
 		return with(b -> b.settings = b.settings.with(mod));
 	}

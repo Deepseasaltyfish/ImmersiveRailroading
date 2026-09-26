@@ -24,13 +24,24 @@ public class WorldData {
             File[] files = worldDirectory.listFiles();
             if (files != null) {
                 Arrays.stream(files).parallel().forEach(file -> {
-                    long id = Long.parseLong(file.getName().replace(".irr", ""));
+                    String name = file.getName();
+                    if (!name.endsWith(".irr")) {
+                        return;
+                    }
+                    String baseName = name.substring(0, name.length() - 4);
+                    String[] parts = baseName.split("\\.");
+                    if (parts.length != 3 || !parts[0].equals("r")) {
+                        return;
+                    }
                     try {
+                        int x = Integer.parseInt(parts[1]);
+                        int z = Integer.parseInt(parts[2]);
+                        long id = ((long) x << 32) | (z & 0xFFFFFFFFL);
                         TrackRegion region = new TrackRegion(Util.readBuffer(file));
                         synchronized (regions) {
                             regions.put(id, region);
                         }
-                    } catch (IOException e) {
+                    } catch (IOException | NumberFormatException e) {
                         throw new RuntimeException(e);
                     }
                 });
@@ -48,14 +59,24 @@ public class WorldData {
     }
 
     private File regionFile(long region) {
-        return new File(directory, String.format("%s.irr", region));
+        int x = regionX(region);
+        int z = regionZ(region);
+        return new File(directory, String.format("r.%d.%d.irr", x, z));
     }
 
     public static long vecToRegion(Vec3i pos) {
-        int factor = 8;
+        int factor = 9; // 512 blocks per region (2^9 = 512)
         long x = pos.x >> factor;
         long z = pos.z >> factor;
-        return (x << 32) | z;
+        return (x << 32) | (z & 0xFFFFFFFFL);
+    }
+
+    private static int regionX(long region) {
+        return (int) (region >> 32);
+    }
+
+    private static int regionZ(long region) {
+        return (int) region;
     }
 
     private TrackRegion getRegion(Vec3i pos, boolean create) {

@@ -1,5 +1,6 @@
 package cam72cam.immersiverailroading.track.graph;
 
+import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.mod.ModCore;
 import cam72cam.mod.item.ItemStack;
 import cam72cam.mod.serialization.TagCompound;
@@ -81,6 +82,8 @@ public class Util {
     static void writeItemStack(ItemStack stack, ByteBuffer buffer) {
         if (stack == null) {
             buffer.putInt(0);
+            ImmersiveRailroading.error("empty ItemStack!");
+            return;
         }
         try {
             byte[] bytes = stack.toTag().toBytes();

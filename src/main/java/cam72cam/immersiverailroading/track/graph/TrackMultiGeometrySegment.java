@@ -45,7 +45,7 @@ public class TrackMultiGeometrySegment {
             throw new RuntimeException(String.format("Invalid multi track geometry segment data version %d", version));
         }
 
-        buildTime = buffer.getInt(); // buildTime
+        buildTime = buffer.getLong(); // buildTime
         switchState = buffer.getInt(); // switch state
         tableIndex = buffer.getInt(); // table state
 
@@ -58,6 +58,7 @@ public class TrackMultiGeometrySegment {
                 Gauge gauge = Gauge.from(buffer.getDouble()); // segment gauge
                 branch.put(gauge, new TrackSingleGeometrySegment(buffer)); // single segment
             }
+            paths.add(branch);
         }
     }
 

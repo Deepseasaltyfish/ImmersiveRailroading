@@ -118,7 +118,7 @@ public class TrackSingleGeometrySegment {
         bytes += Double.BYTES * 3 * 4;
 
         bytes += Integer.BYTES; // rollAndOffsetInfo.rollOffsetType
-        bytes += Integer.BYTES; // rollAndOffsetInfo.degreeMode
+        bytes += Short.BYTES; // rollAndOffsetInfo.degreeMode
         bytes += Short.BYTES; // rollAndOffsetInfo.offsetVertByNormal
 
         bytes += Integer.BYTES; // rollAndOffsetInfo.arcLenFactors count

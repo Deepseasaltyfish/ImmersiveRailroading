@@ -1,6 +1,7 @@
 package cam72cam.immersiverailroading.track.graph;
 
 import cam72cam.immersiverailroading.ImmersiveRailroading;
+import cam72cam.immersiverailroading.net.TrackRegionPacket;
 import cam72cam.mod.entity.Player;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;
@@ -13,7 +14,7 @@ public class WorldData {
     private final static Map<World, WorldData> LOADED = new HashMap<>();
     private final File directory;
     private final World world;
-    final Map<Long, TrackRegion> regions;
+    public final Map<Long, TrackRegion> regions;
 
     private WorldData(World world, File worldDirectory) {
         this.world = world;
@@ -37,7 +38,7 @@ public class WorldData {
                         int x = Integer.parseInt(parts[1]);
                         int z = Integer.parseInt(parts[2]);
                         long id = ((long) x << 32) | (z & 0xFFFFFFFFL);
-                        TrackRegion region = new TrackRegion(Util.readBuffer(file));
+                        TrackRegion region = new TrackRegion(TrackRegionUtil.readBuffer(file));
                         synchronized (regions) {
                             regions.put(id, region);
                         }
@@ -153,7 +154,7 @@ public class WorldData {
                 }
 
                 try {
-                    Util.writeBuffer(file, region.write());
+                    TrackRegionUtil.writeBuffer(file, region.write());
                     region.needsWriteToDisk = false;
                 } catch (IOException e) {
                     throw new RuntimeException(e);
@@ -230,14 +231,14 @@ public class WorldData {
                     if (region == null) {
                         if (sentRegions.contains(trackingRegion)) {
                             sentRegions.remove(trackingRegion);
-                            new RegionPacket(world, trackingRegion, null).sendToPlayer(player);
+                            new TrackRegionPacket(world, trackingRegion, null).sendToPlayer(player);
                         }
                         continue;
                     }
 
                     if (!sentRegions.contains(trackingRegion) || region.dirty) {
                         sentRegions.add(trackingRegion);
-                        new RegionPacket(world, trackingRegion, region).sendToPlayer(player);
+                        new TrackRegionPacket(world, trackingRegion, region).sendToPlayer(player);
                     }
                 }
             }

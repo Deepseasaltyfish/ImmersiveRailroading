@@ -17,7 +17,7 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 
-public class Util {
+public class TrackRegionUtil {
     // Copied from UMC
     static void writeBuffer(File file, ByteBuffer buffer) throws IOException {
         buffer.position(0);

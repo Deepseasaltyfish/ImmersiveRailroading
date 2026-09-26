@@ -268,6 +268,9 @@ public class Config {
 		@Comment("Keep rolling stock loaded even when it is not moving")
 		public static boolean keepStockLoaded = true;
 
+		@Comment("Train will run without chunk loading")
+		public static boolean offWorldPathing = true;
+
 		@Comment("Break blueprint preview block after building it")
 		public static boolean breakTilePreview = true;
 

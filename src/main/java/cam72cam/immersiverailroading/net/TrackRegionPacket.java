@@ -1,22 +1,24 @@
-package cam72cam.immersiverailroading.track.graph;
+package cam72cam.immersiverailroading.net;
 
+import cam72cam.immersiverailroading.track.graph.TrackRegion;
+import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.mod.net.Packet;
 import cam72cam.mod.serialization.TagField;
 import cam72cam.mod.world.World;
 
 import java.nio.ByteBuffer;
 
-public class RegionPacket extends Packet {
+public class TrackRegionPacket extends Packet {
     @TagField
     private World world;
     @TagField
     private long id;
 
-    public RegionPacket() {
+    public TrackRegionPacket() {
         // Reflection
     }
 
-    public RegionPacket(World world, long id, TrackRegion region) {
+    public TrackRegionPacket(World world, long id, TrackRegion region) {
         this.world = world;
         this.id = id;
         // This is stupidly inefficient

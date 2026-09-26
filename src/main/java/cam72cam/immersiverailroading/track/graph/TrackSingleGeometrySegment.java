@@ -36,7 +36,7 @@ public class TrackSingleGeometrySegment {
 
         switchIdex = buffer.getInt(); // switch index
         gauge = Gauge.from(buffer.getDouble()); // gauge
-        referenceTrack = Util.readString(buffer);// referenceTrack
+        referenceTrack = TrackRegionUtil.readString(buffer);// referenceTrack
 
         // baseCurve p1.xyz ctrl1.xyz ctrl2.xyz p2.xyz
         double[] baseCurveArgs = new double[3 * 4];
@@ -112,7 +112,7 @@ public class TrackSingleGeometrySegment {
         bytes += Integer.BYTES; // version
         bytes += Integer.BYTES; // switch index
         bytes += Double.BYTES; // gauge
-        bytes += Util.sizeString(referenceTrack); // referenceTrack
+        bytes += TrackRegionUtil.sizeString(referenceTrack); // referenceTrack
 
         // baseCurve p1.xyz ctrl1.xyz ctrl2.xyz p2.xyz
         bytes += Double.BYTES * 3 * 4;
@@ -139,7 +139,7 @@ public class TrackSingleGeometrySegment {
         buffer.putInt(1); // version
         buffer.putInt(switchIdex); // switch index
         buffer.putDouble(gauge.value()); // gauge
-        Util.writeString(referenceTrack, buffer);// referenceTrack
+        TrackRegionUtil.writeString(referenceTrack, buffer);// referenceTrack
 
         // baseCurve p1.xyz ctrl1.xyz ctrl2.xyz p2.xyz
         buffer.putDouble(baseCurve.p1.x);

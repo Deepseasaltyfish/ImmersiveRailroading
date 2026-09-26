@@ -22,7 +22,7 @@ import cam72cam.immersiverailroading.tile.TileMultiblock;
 import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.tile.TileRailGag;
 import cam72cam.immersiverailroading.tile.TileRailPreview;
-import cam72cam.immersiverailroading.track.graph.RegionPacket;
+import cam72cam.immersiverailroading.net.TrackRegionPacket;
 import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.immersiverailroading.util.IRFuzzy;
 import cam72cam.mod.MinecraftClient;
@@ -96,7 +96,7 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				Packet.register(GuiBuilder.ControlChangePacket::new, PacketDirection.ClientToServer);
 				Packet.register(ItemPaintBrush.PaintBrushPacket::new, PacketDirection.ClientToServer);
 				Packet.register(AugmentFilterGUI.AugmentFilterChangePacket::new, PacketDirection.ClientToServer);
-				Packet.register(RegionPacket::new, PacketDirection.ServerToClient);
+				Packet.register(TrackRegionPacket::new, PacketDirection.ServerToClient);
 
 				ServerChronoState.register();
 

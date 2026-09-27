@@ -7,6 +7,7 @@ import cam72cam.immersiverailroading.library.TrackItems;
 import cam72cam.immersiverailroading.library.TrackSmoothing;
 import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.track.BuilderCubicCurve;
+import cam72cam.immersiverailroading.track.BuilderIterator;
 import cam72cam.immersiverailroading.track.CubicCurve;
 import cam72cam.immersiverailroading.track.VecYPR;
 import cam72cam.immersiverailroading.util.*;
@@ -23,6 +24,7 @@ public class TrackSingleGeometrySegment {
     protected final Gauge gauge;
     protected final int switchIdex;
     protected final float yaw;
+    protected final Vec3d placementPosition;
     protected final CubicCurve baseCurve;
     protected final RollAndOffsetInfo rollAndOffsetInfo;
     protected final String referenceTrack;// for path piece height
@@ -33,11 +35,18 @@ public class TrackSingleGeometrySegment {
         this.gauge = trackBlock.info.settings.gauge;
         this.switchIdex = switchIndex;
         this.yaw = trackBlock.info.placementInfo.yaw;
+        this.placementPosition = trackBlock.info.placementInfo.placementPosition;
         this.baseCurve = new BuilderCubicCurve(trackBlock.info, world, pos, false).getCurve();
         this.rollAndOffsetInfo = trackBlock.info.settings.rollAndOffsetInfo;
         this.referenceTrack = trackBlock.info.settings.track;
         this.facePivotType = trackBlock.info.settings.trackFaceTransSetting.facePivotType();
         this.facePivotOffset = trackBlock.info.settings.trackFaceTransSetting.facePivotOffset();
+
+//        BuilderCubicCurve test0 = new BuilderCubicCurve(trackBlock.info, world, pos, false);
+//        BuilderCubicCurve test1 = getBuilder(world, pos);
+//        CubicCurve curve0 = test0.getCurve();
+//        CubicCurve curve1 = test1.getCurve();
+//        int a = 1;
     }
 
     public TrackSingleGeometrySegment(ByteBuffer buffer) {
@@ -59,6 +68,12 @@ public class TrackSingleGeometrySegment {
         facePivotOffset = new Vec3d(x, y, z);
 
         yaw = buffer.getFloat(); // yaw
+        // placementPosition
+        x = buffer.getDouble();
+        y = buffer.getDouble();
+        z = buffer.getDouble();
+        placementPosition = new Vec3d(x, y, z);
+
         // baseCurve p1.xyz ctrl1.xyz ctrl2.xyz p2.xyz
         double[] baseCurveArgs = new double[3 * 4];
         for(int i = 0; i < 3 * 4; i++) {
@@ -137,6 +152,7 @@ public class TrackSingleGeometrySegment {
         bytes += Double.BYTES * 3; // facePivotOffset
 
         bytes += Float.BYTES; // yaw
+        bytes += Double.BYTES * 3; // placementPosition
         // baseCurve p1.xyz ctrl1.xyz ctrl2.xyz p2.xyz
         bytes += Double.BYTES * 3 * 4;
 
@@ -165,6 +181,10 @@ public class TrackSingleGeometrySegment {
         TrackRegionUtil.writeString(referenceTrack, buffer);// referenceTrack
 
         buffer.putFloat(yaw); // yaw
+        // placementPosition
+        buffer.putDouble(placementPosition.x);
+        buffer.putDouble(placementPosition.y);
+        buffer.putDouble(placementPosition.z);
         // baseCurve p1.xyz ctrl1.xyz ctrl2.xyz p2.xyz
         buffer.putDouble(baseCurve.p1.x);
         buffer.putDouble(baseCurve.p1.y);
@@ -233,8 +253,8 @@ public class TrackSingleGeometrySegment {
         );
         RailInfo info = new RailInfo(
                 settings,
-                new PlacementInfo(baseCurve.p1, TrackDirection.NONE, yaw, baseCurve.ctrl1),
-                new PlacementInfo(baseCurve.p2, TrackDirection.NONE, yaw, baseCurve.ctrl2) // well this is how it works, internal override logic...
+                new PlacementInfo(baseCurve.p1, TrackDirection.NONE, yaw, baseCurve.ctrl1).offset(placementPosition),
+                new PlacementInfo(baseCurve.p2, TrackDirection.NONE, yaw, baseCurve.ctrl2).offset(placementPosition) // well this is how it works, internal override logic...
         );
         return new BuilderCubicCurve(info, world, pos, false);
     }

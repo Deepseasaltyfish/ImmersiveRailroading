@@ -38,7 +38,7 @@ public class WorldData {
                         int x = Integer.parseInt(parts[1]);
                         int z = Integer.parseInt(parts[2]);
                         long id = ((long) x << 32) | (z & 0xFFFFFFFFL);
-                        TrackRegion region = new TrackRegion(TrackRegionUtil.readBuffer(file));
+                        TrackRegion region = new TrackRegion(TrackRegionUtil.readBuffer(file), world);
                         synchronized (regions) {
                             regions.put(id, region);
                         }

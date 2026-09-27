@@ -41,7 +41,7 @@ public class TrackRegionPacket extends Packet {
             return;
         }
 
-        TrackRegion region = new TrackRegion(ByteBuffer.wrap(raw));
+        TrackRegion region = new TrackRegion(ByteBuffer.wrap(raw), world);
         synchronized (data.regions) {
             data.regions.put(id, region);
         }

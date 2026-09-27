@@ -40,7 +40,7 @@ public class TrackMultiGeometrySegment {
         //todo
     }
 
-    public TrackMultiGeometrySegment(ByteBuffer buffer) {
+    public TrackMultiGeometrySegment(ByteBuffer buffer, World world, Vec3i pos) {
         int version = buffer.getInt(); // version
         if (version != 1) {
             throw new RuntimeException(String.format("Invalid multi track geometry segment data version %d", version));
@@ -57,7 +57,7 @@ public class TrackMultiGeometrySegment {
             Map<Gauge, TrackSingleGeometrySegment> branch = new HashMap<>();
             for(int j = 0; j < segmentCount; j++) {
                 Gauge gauge = Gauge.from(buffer.getDouble()); // segment gauge
-                branch.put(gauge, new TrackSingleGeometrySegment(buffer)); // single segment
+                branch.put(gauge, new TrackSingleGeometrySegment(buffer, world, pos)); // single segment
             }
             paths.add(branch);
         }

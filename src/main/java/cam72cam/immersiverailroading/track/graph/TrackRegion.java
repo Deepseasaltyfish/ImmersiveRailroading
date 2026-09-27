@@ -1,6 +1,7 @@
 package cam72cam.immersiverailroading.track.graph;
 
 import cam72cam.mod.math.Vec3i;
+import cam72cam.mod.world.World;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -16,7 +17,7 @@ public class TrackRegion {//todo 按照chunk pos/pos排序？ hashset?
         trackBlocks = new HashMap<>();
     }
 
-    public TrackRegion(ByteBuffer buffer) {
+    public TrackRegion(ByteBuffer buffer, World world) {
         int version = buffer.getInt();
         if (version != 1) {
             throw new RuntimeException(String.format("Invalid track block data version %d", version));
@@ -28,7 +29,8 @@ public class TrackRegion {//todo 按照chunk pos/pos排序？ hashset?
             int x = buffer.getInt();
             int y = buffer.getInt();
             int z = buffer.getInt();
-            trackBlocks.put(new Vec3i(x, y, z), new TrackMultiGeometrySegment(buffer));
+            Vec3i pos = new Vec3i(x, y, z);
+            trackBlocks.put(pos, new TrackMultiGeometrySegment(buffer, world, pos));
         }
     }
 

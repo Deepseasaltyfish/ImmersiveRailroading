@@ -7,9 +7,7 @@ import cam72cam.immersiverailroading.library.TrackItems;
 import cam72cam.immersiverailroading.library.TrackSmoothing;
 import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.track.BuilderCubicCurve;
-import cam72cam.immersiverailroading.track.BuilderIterator;
 import cam72cam.immersiverailroading.track.CubicCurve;
-import cam72cam.immersiverailroading.track.VecYPR;
 import cam72cam.immersiverailroading.util.*;
 import cam72cam.mod.item.ItemStack;
 import cam72cam.mod.math.Vec3d;
@@ -18,6 +16,7 @@ import cam72cam.mod.world.World;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 public class TrackSingleGeometrySegment {
@@ -31,17 +30,21 @@ public class TrackSingleGeometrySegment {
     protected final TrackFaceTransSetting.FacePivotType facePivotType;
     protected final Vec3d facePivotOffset;
 
+    public final HashSet<Vec3i> positionsCache;
+
     public TrackSingleGeometrySegment(TileRail trackBlock, World world, Vec3i pos, int switchIndex, Gauge gauge) {// todo: switch, gauge
         this.gauge = trackBlock.info.settings.gauge;
         this.switchIdex = switchIndex;
         this.yaw = trackBlock.info.placementInfo.yaw;
         this.placementPosition = trackBlock.info.placementInfo.placementPosition;
-        this.baseCurve = new BuilderCubicCurve(trackBlock.info, world, pos, false).getCurve();
+        BuilderCubicCurve builder = new BuilderCubicCurve(trackBlock.info, world, pos, false);
+        this.baseCurve = builder.getCurve();
         this.rollAndOffsetInfo = trackBlock.info.settings.rollAndOffsetInfo;
         this.referenceTrack = trackBlock.info.settings.track;
         this.facePivotType = trackBlock.info.settings.trackFaceTransSetting.facePivotType();
         this.facePivotOffset = trackBlock.info.settings.trackFaceTransSetting.facePivotOffset();
 
+        this.positionsCache = builder.positionsCache;
 //        BuilderCubicCurve test0 = new BuilderCubicCurve(trackBlock.info, world, pos, false);
 //        BuilderCubicCurve test1 = getBuilder(world, pos);
 //        CubicCurve curve0 = test0.getCurve();
@@ -49,7 +52,7 @@ public class TrackSingleGeometrySegment {
 //        int a = 1;
     }
 
-    public TrackSingleGeometrySegment(ByteBuffer buffer) {
+    public TrackSingleGeometrySegment(ByteBuffer buffer, World world, Vec3i pos) {
         int version = buffer.getInt(); // version
         if (version != 1) {
             throw new RuntimeException(String.format("Invalid single track geometry segment data version %d", version));
@@ -60,12 +63,6 @@ public class TrackSingleGeometrySegment {
         switchIdex = buffer.getInt(); // switch index
         gauge = Gauge.from(buffer.getDouble()); // gauge
         referenceTrack = TrackRegionUtil.readString(buffer);// referenceTrack
-        facePivotType = TrackFaceTransSetting.FacePivotType.byOrder(buffer.getInt()); // facePivotType
-        // facePivotOffset
-        x = buffer.getDouble();
-        y = buffer.getDouble();
-        z = buffer.getDouble();
-        facePivotOffset = new Vec3d(x, y, z);
 
         yaw = buffer.getFloat(); // yaw
         // placementPosition
@@ -85,6 +82,13 @@ public class TrackSingleGeometrySegment {
                 new Vec3d(baseCurveArgs[6], baseCurveArgs[7], baseCurveArgs[8]),
                 new Vec3d(baseCurveArgs[9], baseCurveArgs[10], baseCurveArgs[11])
         );
+
+        facePivotType = TrackFaceTransSetting.FacePivotType.byOrder(buffer.getInt()); // facePivotType
+        // facePivotOffset
+        x = buffer.getDouble();
+        y = buffer.getDouble();
+        z = buffer.getDouble();
+        facePivotOffset = new Vec3d(x, y, z);
 
         RollAndOffsetInfo.RollAndVertOffsetAlignType rollOffsetType = RollAndOffsetInfo.RollAndVertOffsetAlignType.byOrder(buffer.getInt()); // rollAndOffsetInfo.rollOffsetType
         boolean degreeMode = buffer.getShort() == 1; // rollAndOffsetInfo.degreeMode
@@ -139,6 +143,8 @@ public class TrackSingleGeometrySegment {
                 rollOffsetType, false, false, degreeMode, offsetVertByNormal,
                 arcLenFactors, rolls, rollCtrls, yOffsets, yOffsetCtrls, zOffsets, zOffsetCtrls
         );
+
+        positionsCache = getBuilder(world, pos).positionsCache; // TODO: cache builders?
     }
 
     public int sizeBytes() {

@@ -21,7 +21,9 @@ import cam72cam.mod.world.World;
 import org.apache.commons.lang3.tuple.Pair;
 
 public abstract class BuilderIterator extends BuilderBase implements IIterableTrack {
-	protected HashSet<Vec3i> positions;
+	protected HashSet<Vec3i> positions;// Do not modify from outside!
+
+	public final HashSet<Vec3i> positionsCache;
 
 	public BuilderIterator(RailInfo info, World world, Vec3i pos) {
 		this(info, world, pos, false);
@@ -239,7 +241,9 @@ public abstract class BuilderIterator extends BuilderBase implements IIterableTr
 		main.setBedHeight(bedHeights.get(mainPos));
 		main.setBedFace(tileTilt ? planes.get(mainPos) : null);
 
+		HashSet<Vec3i> positionsCache = new HashSet<>();
 		for (Vec3i tilePos : positions) {
+			positionsCache.add(tilePos);
 			if (tilePos.equals(mainPos)) {
 				// Skip parent block
 				continue;
@@ -253,6 +257,8 @@ public abstract class BuilderIterator extends BuilderBase implements IIterableTr
 			tg.setBedFace(tileTilt ? planes.get(tilePos) : null);
 			tracks.add(tg);
 		}
+
+		this.positionsCache = positionsCache;
 	}
 
 	public static Vec3d applyNormalRotation(Vec3d offset, Vec3d normal) {

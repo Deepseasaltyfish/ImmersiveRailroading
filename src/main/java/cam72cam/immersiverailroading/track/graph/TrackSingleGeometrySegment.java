@@ -9,6 +9,7 @@ import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.track.BuilderCubicCurve;
 import cam72cam.immersiverailroading.track.CubicCurve;
 import cam72cam.immersiverailroading.util.*;
+import cam72cam.mod.item.Fuzzy;
 import cam72cam.mod.item.ItemStack;
 import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
@@ -32,12 +33,14 @@ public class TrackSingleGeometrySegment {
 
     public final HashSet<Vec3i> positionsCache;
 
+    private BuilderCubicCurve builderCache;
+
     public TrackSingleGeometrySegment(TileRail trackBlock, World world, Vec3i pos, int switchIndex, Gauge gauge) {// todo: switch, gauge
         this.gauge = trackBlock.info.settings.gauge;
         this.switchIdex = switchIndex;
         this.yaw = trackBlock.info.placementInfo.yaw;
         this.placementPosition = trackBlock.info.placementInfo.placementPosition;
-        BuilderCubicCurve builder = new BuilderCubicCurve(trackBlock.info, world, pos, false);
+        BuilderCubicCurve builder = (BuilderCubicCurve) trackBlock.info.getBuilder(world, pos);
         this.baseCurve = builder.getCurve();
         this.rollAndOffsetInfo = trackBlock.info.settings.rollAndOffsetInfo;
         this.referenceTrack = trackBlock.info.settings.track;
@@ -144,7 +147,7 @@ public class TrackSingleGeometrySegment {
                 arcLenFactors, rolls, rollCtrls, yOffsets, yOffsetCtrls, zOffsets, zOffsetCtrls
         );
 
-        positionsCache = getBuilder(world, pos).positionsCache; // TODO: cache builders?
+        positionsCache = getAndUpdateBuilder(world, pos).positionsCache;
     }
 
     public int sizeBytes() {
@@ -245,7 +248,9 @@ public class TrackSingleGeometrySegment {
         }
     }
 
-    public BuilderCubicCurve getBuilder(World world, Vec3i pos) { // we can get renderData the same as origin
+    public BuilderCubicCurve getAndUpdateBuilder(World world, Vec3i pos) { // we can get renderData the same as origin
+        if(builderCache != null) return builderCache;
+
         RailSettings settings = new RailSettings(
                 gauge, referenceTrack,
                 TrackItems.CUSTOM, TrackItems.CUSTOM,
@@ -253,15 +258,16 @@ public class TrackSingleGeometrySegment {
                 new EndPointData(0), new EndPointData(0),
                 rollAndOffsetInfo, rollAndOffsetInfo,
                 TrackDirection.NONE, new TrackFaceTransSetting(0.1f, facePivotType, facePivotOffset),
-                ItemStack.EMPTY, ItemStack.EMPTY,
+                Fuzzy.DIRT.example(), ItemStack.EMPTY,
                 false, false,
                 0, 0//todo
         );
-        RailInfo info = new RailInfo(
+        RailInfo info = new RailInfo(//todo: 现在只有自定义曲线是对的
                 settings,
                 new PlacementInfo(baseCurve.p1, TrackDirection.NONE, yaw, baseCurve.ctrl1).offset(placementPosition),
                 new PlacementInfo(baseCurve.p2, TrackDirection.NONE, yaw, baseCurve.ctrl2).offset(placementPosition) // well this is how it works, internal override logic...
         );
-        return new BuilderCubicCurve(info, world, pos, false);
+        builderCache = new BuilderCubicCurve(info, world, pos, false);
+        return builderCache;
     }
 }

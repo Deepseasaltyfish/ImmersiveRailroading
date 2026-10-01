@@ -14,7 +14,7 @@ public class WorldData {
     private final static Map<World, WorldData> LOADED = new HashMap<>();
     private final File directory;
     private final World world;
-    public final Map<Long, TrackRegion> regions;
+    public final Map<Long, TrackRegion> regions;//todo 多维度还没有
 
     private WorldData(World world, File worldDirectory) {
         this.world = world;
@@ -200,7 +200,7 @@ public class WorldData {
         }
     }
 
-    private final Map<Player, Set<Long>> playerRegionMap = new HashMap<>();
+    private final Map<Player, Set<Long>> playerRegionMap = new HashMap<>();//todo: sync
     private void tick() {
         if (world.isServer) {
             List<Player> players = world.getEntities(Player.class);
@@ -221,9 +221,8 @@ public class WorldData {
                 int radius = 16;
                 for (int x = -radius; x <= radius; x++) {
                     for (int z = -radius; z <= radius; z++) {
-                        trackingRegions.add(vecToRegion(new Vec3i(player.getPosition()).add(x*16, 0, z*16)));
+                        trackingRegions.add(vecToRegion(new Vec3i(player.getPosition()).add(x * 16, 0, z * 16)));
                     }
-
                 }
                 for (Long trackingRegion : trackingRegions) {
                     TrackRegion region = regions.get(trackingRegion);

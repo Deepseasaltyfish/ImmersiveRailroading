@@ -14,7 +14,7 @@ import java.util.Map;
 
 public class TrackMultiGeometrySegment {
     private final long buildTime;
-    private final List<Map<Gauge, TrackSingleGeometrySegment>> paths;
+    protected final List<Map<Gauge, TrackSingleGeometrySegment>> paths;
     private int switchState;
     private int tableIndex;
 
@@ -99,5 +99,15 @@ public class TrackMultiGeometrySegment {
                 entry.getValue().write(buffer); // single segment
             }
         }
+    }
+
+    public List<Vec3i> getPositionsCache() {
+        List<Vec3i> positionCache = new ArrayList<>();
+        for(Map<Gauge, TrackSingleGeometrySegment> branch : paths) {
+            for(Map.Entry<Gauge, TrackSingleGeometrySegment> entry : branch.entrySet()) {
+                positionCache.addAll(entry.getValue().positionsCache);
+            }
+        }
+        return positionCache;
     }
 }

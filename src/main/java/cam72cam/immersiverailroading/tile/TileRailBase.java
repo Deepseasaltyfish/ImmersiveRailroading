@@ -17,6 +17,8 @@ import cam72cam.immersiverailroading.model.part.Door;
 import cam72cam.immersiverailroading.physics.MovementTrack;
 import cam72cam.immersiverailroading.thirdparty.trackapi.BlockEntityTrackTickable;
 import cam72cam.immersiverailroading.thirdparty.trackapi.IRPathingData;
+import cam72cam.immersiverailroading.track.graph.TrackMultiGeometrySegment;
+import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.immersiverailroading.util.*;
 import cam72cam.mod.block.IRedstoneProvider;
 import cam72cam.mod.entity.Player;
@@ -1071,6 +1073,10 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 					tileRail.info = info;
 					tileRail.markAllDirty();
 				}
+
+				tileRail.setBuildTimeMs(System.currentTimeMillis());
+				TrackMultiGeometrySegment trackBlock = new TrackMultiGeometrySegment(tileRail, getWorld(), tileRail.getPos());
+				WorldData.get(getWorld()).setTrackBlock(tileRail.getPos(), trackBlock);
 			}
 			return true;
 		}

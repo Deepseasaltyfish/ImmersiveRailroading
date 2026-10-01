@@ -4,17 +4,37 @@ import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-public class TrackRegion {//todo 按照chunk pos/pos排序？ hashset?
-    private final Map<Vec3i, TrackMultiGeometrySegment> trackBlocks;
+public class TrackRegion {
+    protected final Map<Vec3i, TrackMultiGeometrySegment> trackBlocks;// fake final
+    // key: gag region-relative pos, value: parent track block region-relative pos list
+    public final HashMap<Vec3i, List<Vec3i>> trackBlockParents;
+
     boolean needsWriteToDisk;
     boolean dirty;
-    boolean isEmpty;
 
     public TrackRegion() {
         trackBlocks = new HashMap<>();
+        trackBlockParents = new HashMap<>();
+    }
+
+    // region is 512 * worldHeight * 512, only x/z are limited
+    public static Vec3i toRegionBlockPos(Vec3i blockPos) {
+        return new Vec3i(blockPos.x & 0x1FF, blockPos.y, blockPos.z & 0x1FF);
+    }
+
+    public static Vec3i toBlockPos(long regionPos, Vec3i regionBlockPos) {
+        int regionX = (int) (regionPos >> 32);
+        int regionZ = (int) regionPos;
+        return new Vec3i(
+                (regionX << 9) + regionBlockPos.x,
+                regionBlockPos.y,
+                (regionZ << 9) + regionBlockPos.z
+        );
     }
 
     public TrackRegion(ByteBuffer buffer, World world) {
@@ -25,12 +45,21 @@ public class TrackRegion {//todo 按照chunk pos/pos排序？ hashset?
 
         int size = buffer.getInt();
         trackBlocks = new HashMap<>(size);
+        trackBlockParents = new HashMap<>(size);
         for (int i = 0; i < size; i++) {
             int x = buffer.getInt();
             int y = buffer.getInt();
             int z = buffer.getInt();
-            Vec3i pos = new Vec3i(x, y, z);
-            trackBlocks.put(pos, new TrackMultiGeometrySegment(buffer, world, pos));
+            Vec3i relBlockPos = new Vec3i(x, y, z);
+            TrackMultiGeometrySegment segment = new TrackMultiGeometrySegment(buffer, world, relBlockPos);
+            trackBlocks.put(relBlockPos, segment);
+
+            for (Vec3i offset : segment.getPositionsCache()) {
+                Vec3i gagPos = toRegionBlockPos(relBlockPos.add(offset));
+                List<Vec3i> parents = trackBlockParents.getOrDefault(gagPos, new ArrayList<>());
+                parents.add(relBlockPos);
+                trackBlockParents.put(gagPos, parents);
+            }
         }
     }
 
@@ -54,7 +83,7 @@ public class TrackRegion {//todo 按照chunk pos/pos排序？ hashset?
             buffer.putInt(1); // version
             buffer.putInt(trackBlocks.size());
             for (Map.Entry<Vec3i, TrackMultiGeometrySegment> entry : trackBlocks.entrySet()) {
-                Vec3i pos = entry.getKey();
+                Vec3i pos = entry.getKey();// rel pos in region
                 buffer.putInt(pos.x);
                 buffer.putInt(pos.y);
                 buffer.putInt(pos.z);
@@ -66,7 +95,7 @@ public class TrackRegion {//todo 按照chunk pos/pos排序？ hashset?
 
     public TrackMultiGeometrySegment getTrackBlock(Vec3i pos) {
         synchronized (trackBlocks) {
-            return trackBlocks.get(pos);
+            return trackBlocks.get(toRegionBlockPos(pos));
         }
     }
 
@@ -78,8 +107,20 @@ public class TrackRegion {//todo 按照chunk pos/pos排序？ hashset?
 
     public boolean removeTrackBlock(Vec3i pos) {
         synchronized (trackBlocks) {
-            if (trackBlocks.remove(pos) == null) {
+            Vec3i relPos = toRegionBlockPos(pos);
+            TrackMultiGeometrySegment removed = trackBlocks.remove(relPos);
+            if (removed == null) {
                 return false;
+            }
+            for (Vec3i offset : removed.getPositionsCache()) {
+                Vec3i gagPos = toRegionBlockPos(relPos.add(offset));
+                List<Vec3i> parents = trackBlockParents.get(gagPos);
+                if (parents != null) {
+                    parents.remove(relPos);
+                    if (parents.isEmpty()) {
+                        trackBlockParents.remove(gagPos);
+                    }
+                }
             }
             needsWriteToDisk = true;
             dirty = true;
@@ -89,7 +130,16 @@ public class TrackRegion {//todo 按照chunk pos/pos排序？ hashset?
 
     public void setTrackBlock(Vec3i pos, TrackMultiGeometrySegment block) {
         synchronized (trackBlocks) {
-            trackBlocks.put(pos, block);
+            Vec3i relBlockPos = toRegionBlockPos(pos);
+            trackBlocks.put(relBlockPos, block);
+
+            for (Vec3i offset : block.getPositionsCache()) {
+                Vec3i gagPos = toRegionBlockPos(relBlockPos.add(offset));
+                List<Vec3i> parents = trackBlockParents.getOrDefault(gagPos, new ArrayList<>());
+                parents.add(relBlockPos);
+                trackBlockParents.put(gagPos, parents);
+            }
+
             needsWriteToDisk = true;
             dirty = true;
         }

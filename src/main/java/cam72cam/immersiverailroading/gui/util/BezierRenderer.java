@@ -15,8 +15,8 @@ public class BezierRenderer {
     private final RenderState state;
     private final List<CubicCurve> curves;
     private static final float LINE_WIDTH = 1f;
-    private static final Identifier lineImg = new Identifier(ImmersiveRailroading.MODID, "textures/line.png");
-    private static final Identifier pointImg = new Identifier(ImmersiveRailroading.MODID, "textures/point.png");
+    public static final Identifier lineImg = new Identifier(ImmersiveRailroading.MODID, "textures/line.png");
+    public static final Identifier pointImg = new Identifier(ImmersiveRailroading.MODID, "textures/point.png");
 
     public BezierRenderer(RenderState state, List<CubicCurve> curves) {
         this.state = state;

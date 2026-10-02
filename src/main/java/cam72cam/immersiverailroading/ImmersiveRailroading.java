@@ -32,6 +32,7 @@ import cam72cam.mod.ModEvent;
 import cam72cam.mod.config.ConfigFile;
 import cam72cam.mod.entity.Entity;
 import cam72cam.mod.entity.EntityRegistry;
+import cam72cam.mod.entity.Player;
 import cam72cam.mod.event.ClientEvents;
 import cam72cam.mod.event.CommonEvents;
 import cam72cam.mod.input.Keyboard;
@@ -208,7 +209,10 @@ public class ImmersiveRailroading extends ModCore.Mod {
 			case SETUP:
 				GlobalRender.registerItemMouseover(IRItems.ITEM_TRACK_BLUEPRINT, TrackBlueprintItemModel::renderMouseover);
 				GlobalRender.registerItemMouseover(IRItems.ITEM_MANUAL, MBBlueprintRender::renderMouseover);
-				GlobalRender.registerItemMouseover(IRItems.ITEM_GOLDEN_SPIKE, DebugWireFrameRenderer::renderWireFrame);
+				GlobalRender.registerRender((state, pt) -> {
+					if(!MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY).is(IRItems.ITEM_GOLDEN_SPIKE)) return;
+					DebugWireFrameRenderer.renderWireFrame(state, pt);
+				});
 
 				GlobalRender.registerOverlay((state, pt) -> {
 					Entity riding = MinecraftClient.getPlayer().getRiding();

@@ -122,20 +122,4 @@ public class RailRender {
 			MinecraftClient.endProfiler();
 		}
 	}
-
-	public static void renderDebug(RailInfo info, RenderState state) {
-		state.lighting(false);
-		RailRender renderer = get(info);
-		Vec3d off = info.placementInfo.placementPosition;
-
-		MinecraftClient.startProfiler("rail");
-		renderer.renderRailModel(state);
-		MinecraftClient.endProfiler();
-
-		state.translate(-off.x, -off.y, -off.z);
-
-		MinecraftClient.startProfiler("base");
-		renderer.renderRailBase(state);
-		MinecraftClient.endProfiler();
-	}
 }

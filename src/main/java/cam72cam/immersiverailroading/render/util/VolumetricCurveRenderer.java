@@ -1,11 +1,14 @@
-package cam72cam.immersiverailroading.track.graph;
+package cam72cam.immersiverailroading.render.util;
 
-import cam72cam.immersiverailroading.render.util.Color;
 import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.render.ExpireableMap;
 import cam72cam.immersiverailroading.render.rail.RailRender;
 import cam72cam.immersiverailroading.track.CubicCurve;
 import cam72cam.immersiverailroading.track.VecYPR;
+import cam72cam.immersiverailroading.track.graph.TrackMultiGeometrySegment;
+import cam72cam.immersiverailroading.track.graph.TrackRegion;
+import cam72cam.immersiverailroading.track.graph.TrackSingleGeometrySegment;
+import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.immersiverailroading.util.RailInfo;
 import cam72cam.mod.MinecraftClient;
 import cam72cam.mod.entity.Player;

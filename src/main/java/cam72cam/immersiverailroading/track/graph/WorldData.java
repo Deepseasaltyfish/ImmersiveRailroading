@@ -80,7 +80,7 @@ public class WorldData {
         return (int) region;
     }
 
-    private TrackRegion getRegion(Vec3i pos, boolean create) {
+    protected TrackRegion getRegion(Vec3i pos, boolean create) {
         long id = vecToRegion(pos);
         return getRegionById(id, create);
     }

@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 public class TrackRegion {
-    protected final Map<Vec3i, TrackMultiGeometrySegment> trackBlocks;// fake final
+    public final Map<Vec3i, TrackMultiGeometrySegment> trackBlocks;// fake final
     // key: gag region-relative pos, value: parent track block region-relative pos list
     public final HashMap<Vec3i, List<Vec3i>> trackBlockParents;
 

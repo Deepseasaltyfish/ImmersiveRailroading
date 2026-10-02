@@ -23,7 +23,7 @@ import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.tile.TileRailGag;
 import cam72cam.immersiverailroading.tile.TileRailPreview;
 import cam72cam.immersiverailroading.net.TrackRegionPacket;
-import cam72cam.immersiverailroading.track.graph.VolumetricCurveRenderer;
+import cam72cam.immersiverailroading.render.util.VolumetricCurveRenderer;
 import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.immersiverailroading.util.IRFuzzy;
 import cam72cam.mod.MinecraftClient;

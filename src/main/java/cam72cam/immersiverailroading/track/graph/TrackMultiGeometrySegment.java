@@ -14,7 +14,7 @@ import java.util.Map;
 
 public class TrackMultiGeometrySegment {
     private final long buildTime;
-    protected final List<Map<Gauge, TrackSingleGeometrySegment>> paths;
+    public final List<Map<Gauge, TrackSingleGeometrySegment>> paths;
     private int switchState;
     private int tableIndex;
 

@@ -26,7 +26,7 @@ public class TrackSingleGeometrySegment {
     protected final int switchIdex;
     protected final float yaw;
     protected final Vec3d placementPosition;
-    protected final CubicCurve baseCurve;
+    public final CubicCurve baseCurve;
     protected final RollAndOffsetInfo rollAndOffsetInfo;
     protected final String referenceTrack;// for path piece height
     protected final TrackFaceTransSetting.FacePivotType facePivotType;

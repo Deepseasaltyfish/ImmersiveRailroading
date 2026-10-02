@@ -1,4 +1,4 @@
-package cam72cam.immersiverailroading.gui.util;
+package cam72cam.immersiverailroading.render.util;
 
 public record Color(double r, double g, double b, double a) {
 
@@ -11,6 +11,7 @@ public record Color(double r, double g, double b, double a) {
     }
 
     public static final Color RED = new Color(255, 0, 0, 255);
+    public static final Color CYAN = new Color(0, 255, 255, 255);
     public static final Color LIME = new Color(0, 255, 0, 255);
     public static final Color CHARTREUSE = new Color(127, 255, 0, 255);
     public static final Color BLUE = new Color(0, 0, 255, 255);

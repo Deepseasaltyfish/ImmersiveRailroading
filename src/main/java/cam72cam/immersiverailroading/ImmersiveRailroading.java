@@ -23,7 +23,7 @@ import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.tile.TileRailGag;
 import cam72cam.immersiverailroading.tile.TileRailPreview;
 import cam72cam.immersiverailroading.net.TrackRegionPacket;
-import cam72cam.immersiverailroading.track.graph.DebugWireFrameRenderer;
+import cam72cam.immersiverailroading.track.graph.VolumetricCurveRenderer;
 import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.immersiverailroading.util.IRFuzzy;
 import cam72cam.mod.MinecraftClient;
@@ -211,7 +211,7 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				GlobalRender.registerItemMouseover(IRItems.ITEM_MANUAL, MBBlueprintRender::renderMouseover);
 				GlobalRender.registerRender((state, pt) -> {
 					if(!MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY).is(IRItems.ITEM_GOLDEN_SPIKE)) return;
-					DebugWireFrameRenderer.renderWireFrame(state, pt);
+					VolumetricCurveRenderer.renderWireFrame(state, pt);
 				});
 
 				GlobalRender.registerOverlay((state, pt) -> {

@@ -8,6 +8,7 @@ import cam72cam.immersiverailroading.library.TrackSmoothing;
 import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.track.BuilderCubicCurve;
 import cam72cam.immersiverailroading.track.CubicCurve;
+import cam72cam.immersiverailroading.track.VecYPR;
 import cam72cam.immersiverailroading.util.*;
 import cam72cam.mod.item.Fuzzy;
 import cam72cam.mod.item.ItemStack;
@@ -32,6 +33,7 @@ public class TrackSingleGeometrySegment {
     protected final Vec3d facePivotOffset;
 
     public final HashSet<Vec3i> positionsCache;
+    public final List<VecYPR> pointsCache;
 
     private BuilderCubicCurve builderCache;
 
@@ -48,6 +50,7 @@ public class TrackSingleGeometrySegment {
         this.facePivotOffset = trackBlock.info.settings.trackFaceTransSetting.facePivotOffset();
 
         this.positionsCache = builder.positionsCache;
+        this.pointsCache = builder.getPath(0.25 * gauge.scale());
 //        BuilderCubicCurve test0 = new BuilderCubicCurve(trackBlock.info, world, pos, false);
 //        BuilderCubicCurve test1 = getBuilder(world, pos);
 //        CubicCurve curve0 = test0.getCurve();
@@ -148,6 +151,7 @@ public class TrackSingleGeometrySegment {
         );
 
         positionsCache = getAndUpdateBuilder(world, pos).positionsCache;
+        pointsCache = getAndUpdateBuilder(world, pos).getPath(0.25 * gauge.scale());
     }
 
     public int sizeBytes() {

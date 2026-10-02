@@ -16,18 +16,18 @@ public class TrackNode {
     public TrackNode(TrackSingleGeometrySegment trackSingleGeometrySegment, int index, World world, Vec3i pos) {
         this.trackSingleGeometrySegment = trackSingleGeometrySegment;
         this.index = index;
-        this.direction = trackSingleGeometrySegment.getAndUpdateBuilder(world, pos).getPath(0.25 * trackSingleGeometrySegment.gauge.scale()).get(index);
+        this.direction = trackSingleGeometrySegment.pointsCache.get(index);
     }
 
     public TrackNode(TrackSingleGeometrySegment trackSingleGeometrySegment, boolean isStart, World world, Vec3i pos) {
         this.trackSingleGeometrySegment = trackSingleGeometrySegment;
-        List<VecYPR> points = trackSingleGeometrySegment.getAndUpdateBuilder(world, pos).getPath(0.25 * trackSingleGeometrySegment.gauge.scale());
+        List<VecYPR> points = trackSingleGeometrySegment.pointsCache;
         this.index = isStart ? 0 : points.size() - 1;
         this.direction = points.get(index);
     }
 
     public TrackNode offset(int indexOffset, World world, Vec3i pos) {
-        List<VecYPR> points = trackSingleGeometrySegment.getAndUpdateBuilder(world, pos).getPath(0.25 * trackSingleGeometrySegment.gauge.scale());
+        List<VecYPR> points = trackSingleGeometrySegment.pointsCache;
         int newIndex = index + indexOffset;
         if(newIndex >= 0 && newIndex < points.size()) {
             return new TrackNode(trackSingleGeometrySegment, newIndex, world, pos);

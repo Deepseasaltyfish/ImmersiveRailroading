@@ -1,65 +1,73 @@
 package cam72cam.immersiverailroading.track.graph;
 
-import cam72cam.immersiverailroading.gui.util.Color;
+import cam72cam.immersiverailroading.render.util.Color;
 import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.render.ExpireableMap;
 import cam72cam.immersiverailroading.render.rail.RailRender;
+import cam72cam.immersiverailroading.track.CubicCurve;
+import cam72cam.immersiverailroading.track.VecYPR;
 import cam72cam.immersiverailroading.util.RailInfo;
 import cam72cam.mod.MinecraftClient;
 import cam72cam.mod.entity.Player;
 import cam72cam.mod.item.ItemStack;
+import cam72cam.mod.math.Matrix3;
 import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.render.GlobalRender;
 import cam72cam.mod.render.opengl.*;
 import cam72cam.mod.world.World;
 
+import java.util.List;
 import java.util.Map;
 
-import static cam72cam.immersiverailroading.gui.util.BezierRenderer.lineImg;
-
-public class DebugWireFrameRenderer {
+import static cam72cam.immersiverailroading.render.util.FlatCurveRenderer.lineImg;
+//todo: 和BezierCurveRenderer合并
+public class VolumetricCurveRenderer {
     private static ExpireableMap<String, RailInfo> infoCache = new ExpireableMap<>();
 
-    public static void drawBlockWireFrame(Vec3d pos, RenderState state) {
-        Color color = new Color(0, 1, 0, 0.9999f);
-        double lineWidth = 1.0 / 16.0;
-        double inset = 0.002;
-
-        double x0 = pos.x + inset;
-        double y0 = pos.y + inset;
-        double z0 = pos.z + inset;
-        double x1 = pos.x + 1.0 - inset;
-        double y1 = pos.y + 1.0 - inset;
-        double z1 = pos.z + 1.0 - inset;
-
-        // 8 个角点
-        Vec3d[] c = {
-                new Vec3d(x0, y0, z0), // 0: ---
-                new Vec3d(x1, y0, z0), // 1: +--
-                new Vec3d(x1, y0, z1), // 2: +-+
-                new Vec3d(x0, y0, z1), // 3: --+
-                new Vec3d(x0, y1, z0), // 4: -+-
-                new Vec3d(x1, y1, z0), // 5: ++-
-                new Vec3d(x1, y1, z1), // 6: +++
-                new Vec3d(x0, y1, z1), // 7: -++
-        };
-
-        // 12 条棱
-        int[][] edges = {
-                {0, 1}, {1, 2}, {2, 3}, {3, 0}, // 底面
-                {4, 5}, {5, 6}, {6, 7}, {7, 4}, // 顶面
-                {0, 4}, {1, 5}, {2, 6}, {3, 7}, // 竖棱
-        };
-
+    public static void drawBlockWireFrame(Vec3d pos, RenderState state, Color color, double size, double lineWidth) {
         DirectDraw draw = new DirectDraw();
-        for (int[] e : edges) {
-            appendLineQuad(draw, c[e[0]], c[e[1]], color, lineWidth);
-        }
-
+        drawBlockWireFrame(draw, new VecYPR(pos, 0), color, size, lineWidth);
         draw.draw(state.clone().texture(Texture.wrap(lineImg))
                 .alpha_test(false)
                 .blend(new BlendMode(BlendMode.GL_SRC_ALPHA, BlendMode.GL_ONE_MINUS_SRC_ALPHA)));
+    }
+
+    public static void drawBlockWireFrame(DirectDraw draw, VecYPR pos, Color color, double size, double lineWidth) {
+        double inset = size * 0.002;
+        double half = size / 2.0;
+        double h0 = -half + inset;
+        double h1 = half - inset;
+
+        // 以原点为中心的 8 个局部角点
+        Vec3d[] local = {
+                new Vec3d(h0, h0, h0),
+                new Vec3d(h1, h0, h0),
+                new Vec3d(h1, h0, h1),
+                new Vec3d(h0, h0, h1),
+                new Vec3d(h0, h1, h0),
+                new Vec3d(h1, h1, h0),
+                new Vec3d(h1, h1, h1),
+                new Vec3d(h0, h1, h1),
+        };
+
+        // 应用 yaw/pitch/roll 再平移到世界位置
+        Matrix3 m = pos.toMatrix3();
+        Vec3d[] c = new Vec3d[8];
+        for (int i = 0; i < 8; i++) {
+            Vec3d r = m.apply(local[i]); // 若 Matrix3 的乘法方法名不是 mul，改成对应的
+            c[i] = new Vec3d(pos.x + r.x, pos.y + r.y, pos.z + r.z);
+        }
+
+        int[][] edges = {
+                {0, 1}, {1, 2}, {2, 3}, {3, 0},
+                {4, 5}, {5, 6}, {6, 7}, {7, 4},
+                {0, 4}, {1, 5}, {2, 6}, {3, 7},
+        };
+
+        for (int[] e : edges) {
+            appendLineQuad(draw, c[e[0]], c[e[1]], color, lineWidth);
+        }
     }
 
     private static void appendLineQuad(DirectDraw draw, Vec3d start, Vec3d end, Color color, double width) {
@@ -142,8 +150,10 @@ public class DebugWireFrameRenderer {
 
                     currentState.translate(new Vec3d(blockPos).add(info.placementInfo.placementPosition));
 
-                    drawBlockWireFrame(info.placementInfo.placementPosition.scale(-1), currentState);
-                    renderDebug(info, currentState);
+                    drawBlockWireFrame(info.placementInfo.placementPosition.scale(-1).add(0.5,0.5,0.5), currentState, Color.YELLOW, 1, 1/16f);
+                    renderCurve(single.getValue().pointsCache, Color.LIME, 1 / 16f, currentState.clone().translate(0, 1, 0));
+                    renderHandles(single.getValue().baseCurve, Color.MAGENTA, Color.CYAN, Color.RED, 1 / 16f, 1 / 4f, currentState.clone().translate(0, 1 + 1 / 16f, 0));
+//                  renderDebug(info, currentState);
                 }
             }
         }
@@ -168,5 +178,37 @@ public class DebugWireFrameRenderer {
         MinecraftClient.startProfiler("base");
         renderer.renderRailBase(state);
         MinecraftClient.endProfiler();
+    }
+
+    public static void renderCurve(List<VecYPR> points, Color color, double width, RenderState state) {
+        if (points == null || points.size() < 2) return;
+
+        DirectDraw draw = new DirectDraw();
+        for (int i = 0; i < points.size() - 1; i++) {
+            appendLineQuad(draw, points.get(i), points.get(i + 1), color, width);
+        }
+
+        draw.draw(state.clone().texture(Texture.wrap(lineImg))
+                .alpha_test(false)
+                .blend(new BlendMode(BlendMode.GL_SRC_ALPHA, BlendMode.GL_ONE_MINUS_SRC_ALPHA)));
+    }
+
+    public static void renderHandles(CubicCurve curve, Color handleColor, Color pointColor, Color controlColor,
+                                     double width, double pointSize, RenderState state) {
+        DirectDraw draw = new DirectDraw();
+
+        // 两条控制柄连线：p1 -> ctrl1，p2 -> ctrl2
+        appendLineQuad(draw, curve.p1, curve.ctrl1, handleColor, width);
+        appendLineQuad(draw, curve.p2, curve.ctrl2, handleColor, width);
+
+        // 四个点：p1、ctrl1、ctrl2、p2
+        drawBlockWireFrame(draw, new VecYPR(curve.p1.add(0, -1/32f, 0), 45, 0, 45), pointColor, pointSize, 1/16f);
+        drawBlockWireFrame(draw, new VecYPR(curve.ctrl1.add(0, -1/32f, 0), 45, 0, 45), controlColor, pointSize, 1/16f);
+        drawBlockWireFrame(draw, new VecYPR(curve.ctrl2.add(0, -1/32f, 0), 45, 0, 45), controlColor, pointSize, 1/16f);
+        drawBlockWireFrame(draw, new VecYPR(curve.p2.add(0, -1/32f, 0), 45, 0, 45), pointColor, pointSize, 1/16f);
+
+        draw.draw(state.clone().texture(Texture.wrap(lineImg))
+                .alpha_test(false)
+                .blend(new BlendMode(BlendMode.GL_SRC_ALPHA, BlendMode.GL_ONE_MINUS_SRC_ALPHA)));
     }
 }

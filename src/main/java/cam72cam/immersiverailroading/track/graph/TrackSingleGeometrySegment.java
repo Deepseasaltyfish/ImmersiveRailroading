@@ -42,7 +42,17 @@ public class TrackSingleGeometrySegment {
         this.switchIdex = switchIndex;
         this.yaw = trackBlock.info.placementInfo.yaw;
         this.placementPosition = trackBlock.info.placementInfo.placementPosition;
-        BuilderCubicCurve builder = (BuilderCubicCurve) trackBlock.info.getBuilder(world, pos);
+        BuilderCubicCurve builder;
+        if(trackBlock.info.settings.type == TrackItems.SWITCH) { // legacy switch straight way
+            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, pos);
+        } else if(trackBlock.info.settings.type == TrackItems.TURNTABLE) {
+            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, pos);
+        } else if(trackBlock.info.settings.type == TrackItems.TRANSFERTABLE) {
+            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, pos);
+        } else{ // common way and legacy switch non-straight way
+            builder = (BuilderCubicCurve) trackBlock.info.getBuilder(world, pos);
+        }
+
         this.baseCurve = builder.getCurve();
         this.rollAndOffsetInfo = trackBlock.info.settings.rollAndOffsetInfo;
         this.referenceTrack = trackBlock.info.settings.track;

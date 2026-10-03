@@ -3,8 +3,6 @@ package cam72cam.immersiverailroading.track.graph;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.track.VecYPR;
-import cam72cam.mod.math.Matrix3;
-import cam72cam.mod.math.Quaternion;
 import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;

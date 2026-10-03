@@ -48,32 +48,66 @@ public class TrackNode {
         TrackNode best = null;
         double minAngle = 90;
         double minDist = 0x3f;
+
+        // 3D 前向：由 yaw + pitch 决定
+        // MC 约定 yaw=0 -> +Z, yaw=90 -> -X, pitch>0 朝下
+        double yawRad = Math.toRadians(this.point.getYaw());
+        double pitchRad = Math.toRadians(this.point.getPitch());
+        double cp = Math.cos(pitchRad);
+        Vec3d forwardVec = new Vec3d(
+                -Math.sin(yawRad) * cp,
+                -Math.sin(pitchRad),
+                Math.cos(yawRad) * cp
+        );
+        if (!forward) {
+            forwardVec = forwardVec.scale(-1);
+        }
+        final double cosCone = Math.cos(Math.toRadians(45)); // 锥形半角 45°
+
         for (int x = -hori; x <= hori; x++) {
             for (int y = -vert; y <= vert; y++) {
                 for (int z = -hori; z <= hori; z++) {
-                    Vec3i scan = new Vec3i(point).add(x, y, z);
+                    Vec3i scan = new Vec3i(this.point).add(x, y, z);
                     TrackRegion trackRegion = WorldData.get(world).getRegion(scan, false);
-                    if(trackRegion == null) continue;
+                    if (trackRegion == null) continue;
                     List<Vec3i> parents = trackRegion.trackBlockParents.get(TrackRegion.toRegionBlockPos(scan));
-                    if(parents == null) continue;
-                    for(Vec3i parentRelPos : parents) {
+                    if (parents == null) continue;
+                    for (Vec3i parentRelPos : parents) {
                         long regionId = WorldData.vecToRegion(scan);
                         Vec3i parentPos = TrackRegion.toBlockPos(regionId, parentRelPos);
-                        if(parentPos.equals(current)) continue;
+                        if (parentPos.equals(current)) continue;
 
                         TrackMultiGeometrySegment trackBlock = WorldData.get(world).getTrackBlock(parentPos);
-                        for(Map.Entry<Gauge, TrackSingleGeometrySegment> single : trackBlock.paths.getFirst().entrySet()){
+                        if (trackBlock == null) continue;
+                        for (Map.Entry<Gauge, TrackSingleGeometrySegment> single : trackBlock.paths.getFirst().entrySet()) {
                             List<VecYPR> points = single.getValue().pointsCache;
-                            for(int i = 0; i < points.size(); i ++) {
-                                VecYPR point = points.get(i);
-                                point = point.add(new Vec3d(parentPos)).add(single.getValue().getAndUpdateBuilder(world, parentPos).info.placementInfo.placementPosition);
-                                if(point.distanceTo(this.point) < single.getValue().gauge.value() * 0.5) {
-                                    double angle = angleBetween(point.toMatrix3(), this.point.toMatrix3());
-                                    if(angle < minAngle && point.distanceTo(this.point) < minDist) {
-                                        minAngle = angle;
-                                        minDist = point.distanceTo(this.point);
-                                        best = new TrackNode(single.getValue(), i, world, parentPos);
-                                    }
+                            for (int i = 0; i < points.size(); i++) {
+                                VecYPR cand = points.get(i)
+                                        .add(new Vec3d(parentPos))
+                                        .add(single.getValue()
+                                                .getAndUpdateBuilder(world, parentPos).info.placementInfo.placementPosition);
+
+                                // 距离过滤
+                                double d = cand.distanceTo(this.point);
+                                if (d >= single.getValue().gauge.value() * 0.5) continue;
+
+                                // 3D 锥形过滤
+                                Vec3d offset = new Vec3d(
+                                        cand.x - this.point.x,
+                                        cand.y - this.point.y,
+                                        cand.z - this.point.z
+                                );
+                                double dist = offset.length();
+                                if (dist > 1e-4) {
+                                    Vec3d dir = offset.scale(1.0 / dist);
+                                    if (dir.dotProduct(forwardVec) < cosCone) continue;
+                                }
+
+                                double angle = angleBetween(cand.toMatrix3(), this.point.toMatrix3());
+                                if (angle < minAngle && d < minDist) {
+                                    minAngle = angle;
+                                    minDist = d;
+                                    best = new TrackNode(single.getValue(), i, world, parentPos);
                                 }
                             }
                         }

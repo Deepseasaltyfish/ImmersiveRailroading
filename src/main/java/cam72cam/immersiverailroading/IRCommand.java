@@ -3,7 +3,12 @@ package cam72cam.immersiverailroading;
 import cam72cam.immersiverailroading.entity.EntityCoupleableRollingStock;
 import cam72cam.immersiverailroading.entity.EntityRollingStock;
 import cam72cam.immersiverailroading.entity.Freight;
+import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.registry.DefinitionManager;
+import cam72cam.immersiverailroading.track.graph.TrackMultiGeometrySegment;
+import cam72cam.immersiverailroading.track.graph.TrackNode;
+import cam72cam.immersiverailroading.track.graph.TrackSingleGeometrySegment;
+import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.mod.entity.Player;
 import cam72cam.mod.entity.boundingbox.IBoundingBox;
 import cam72cam.mod.item.ItemStack;
@@ -12,11 +17,13 @@ import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.text.Command;
 import cam72cam.mod.text.PlayerMessage;
 import cam72cam.mod.world.World;
+import scala.Int;
 
 import java.awt.*;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -86,6 +93,31 @@ public class IRCommand extends Command {
 				sender.accept(PlayerMessage.direct("This command is not supported for non-players (yet)"));
 			}
 			return true;
+		}
+
+		if(args[0].equals("offworld")) {
+			if(player.isPresent()) {
+				try{
+					int x = Integer.parseInt(args[1]);
+					int y = Integer.parseInt(args[2]);
+					int z = Integer.parseInt(args[3]);
+					TrackMultiGeometrySegment trackBlock = WorldData.get(player.get().getWorld()).getTrackBlock(new Vec3i(x, y, z));
+					for(Map.Entry<Gauge, TrackSingleGeometrySegment> single : trackBlock.paths.getFirst().entrySet()){
+						TrackNode node = new TrackNode(single.getValue(), true, player.get().getWorld(), new Vec3i(x, y, z));
+						TrackNode next = node.getConn(player.get().getWorld(), new Vec3i(x, y, z));
+						sender.accept(PlayerMessage.direct("node:" + node.direction + " next:" + (next == null ? "null" : next.direction)));
+
+						TrackNode node2 = new TrackNode(single.getValue(), false, player.get().getWorld(), new Vec3i(x, y, z));
+						TrackNode next2 = node2.getConn(player.get().getWorld(), new Vec3i(x, y, z));
+						sender.accept(PlayerMessage.direct("node2:" + node2.direction + " next2:" + (next2 == null ? "null" : next2.direction)));
+					}
+					return true;
+				}catch(Exception e){
+					sender.accept(PlayerMessage.direct("Invalid arguments exception"));
+				}
+			} else {
+				sender.accept(PlayerMessage.direct("This command is not supported for non-players (yet)"));
+			}
 		}
 		return false;
 	}

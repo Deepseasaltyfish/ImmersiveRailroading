@@ -1,10 +1,8 @@
 package cam72cam.immersiverailroading;
 
-import cam72cam.immersiverailroading.entity.EntityCoupleableRollingStock;
 import cam72cam.immersiverailroading.entity.EntityRollingStock;
 import cam72cam.immersiverailroading.entity.Freight;
 import cam72cam.immersiverailroading.library.Gauge;
-import cam72cam.immersiverailroading.registry.DefinitionManager;
 import cam72cam.immersiverailroading.track.graph.TrackMultiGeometrySegment;
 import cam72cam.immersiverailroading.track.graph.TrackNode;
 import cam72cam.immersiverailroading.track.graph.TrackSingleGeometrySegment;
@@ -16,11 +14,7 @@ import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.text.Command;
 import cam72cam.mod.text.PlayerMessage;
-import cam72cam.mod.world.World;
-import scala.Int;
 
-import java.awt.*;
-import java.io.IOException;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -104,12 +98,12 @@ public class IRCommand extends Command {
 					TrackMultiGeometrySegment trackBlock = WorldData.get(player.get().getWorld()).getTrackBlock(new Vec3i(x, y, z));
 					for(Map.Entry<Gauge, TrackSingleGeometrySegment> single : trackBlock.paths.getFirst().entrySet()){
 						TrackNode node = new TrackNode(single.getValue(), true, player.get().getWorld(), new Vec3i(x, y, z));
-						TrackNode next = node.getConn(player.get().getWorld(), new Vec3i(x, y, z));
-						sender.accept(PlayerMessage.direct("node:" + node.direction + " next:" + (next == null ? "null" : next.direction)));
+						TrackNode next = node.getConn(player.get().getWorld(), new Vec3i(x, y, z), true);
+						sender.accept(PlayerMessage.direct("node:" + node.point + " next:" + (next == null ? "null" : next.point)));
 
 						TrackNode node2 = new TrackNode(single.getValue(), false, player.get().getWorld(), new Vec3i(x, y, z));
-						TrackNode next2 = node2.getConn(player.get().getWorld(), new Vec3i(x, y, z));
-						sender.accept(PlayerMessage.direct("node2:" + node2.direction + " next2:" + (next2 == null ? "null" : next2.direction)));
+						TrackNode next2 = node2.getConn(player.get().getWorld(), new Vec3i(x, y, z), false);
+						sender.accept(PlayerMessage.direct("node2:" + node2.point + " next2:" + (next2 == null ? "null" : next2.point)));
 					}
 					return true;
 				}catch(Exception e){

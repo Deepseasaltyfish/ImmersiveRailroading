@@ -16,19 +16,19 @@ public class TrackNode {
     public final TrackSingleGeometrySegment trackSingleGeometrySegment;
     public final int index;
 
-    public final VecYPR direction;
+    public final VecYPR point;
 
     public TrackNode(TrackSingleGeometrySegment trackSingleGeometrySegment, int index, World world, Vec3i pos) {
         this.trackSingleGeometrySegment = trackSingleGeometrySegment;
         this.index = index;
-        this.direction = trackSingleGeometrySegment.pointsCache.get(index).add(new Vec3d(pos)).add(trackSingleGeometrySegment.getAndUpdateBuilder(world, pos).info.placementInfo.placementPosition);
+        this.point = trackSingleGeometrySegment.pointsCache.get(index).add(new Vec3d(pos)).add(trackSingleGeometrySegment.getAndUpdateBuilder(world, pos).info.placementInfo.placementPosition);
     }
 
     public TrackNode(TrackSingleGeometrySegment trackSingleGeometrySegment, boolean isStart, World world, Vec3i pos) {
         this.trackSingleGeometrySegment = trackSingleGeometrySegment;
         List<VecYPR> points = trackSingleGeometrySegment.pointsCache;
         this.index = isStart ? 0 : points.size() - 1;
-        this.direction = points.get(index).add(new Vec3d(pos)).add(trackSingleGeometrySegment.getAndUpdateBuilder(world, pos).info.placementInfo.placementPosition);
+        this.point = points.get(index).add(new Vec3d(pos)).add(trackSingleGeometrySegment.getAndUpdateBuilder(world, pos).info.placementInfo.placementPosition);
     }
 
     public TrackNode offset(int indexOffset, World world, Vec3i pos) {
@@ -42,7 +42,7 @@ public class TrackNode {
         }
     }
 
-    public TrackNode getConn(World world, Vec3i current) {
+    public TrackNode getConn(World world, Vec3i current, boolean forward) {
         int hori = Math.max((int) (trackSingleGeometrySegment.gauge.scale() * 2), 1);
         int vert = 1;
         TrackNode best = null;
@@ -51,7 +51,7 @@ public class TrackNode {
         for (int x = -hori; x <= hori; x++) {
             for (int y = -vert; y <= vert; y++) {
                 for (int z = -hori; z <= hori; z++) {
-                    Vec3i scan = new Vec3i(direction).add(x, y, z);
+                    Vec3i scan = new Vec3i(point).add(x, y, z);
                     TrackRegion trackRegion = WorldData.get(world).getRegion(scan, false);
                     if(trackRegion == null) continue;
                     List<Vec3i> parents = trackRegion.trackBlockParents.get(TrackRegion.toRegionBlockPos(scan));
@@ -67,11 +67,11 @@ public class TrackNode {
                             for(int i = 0; i < points.size(); i ++) {
                                 VecYPR point = points.get(i);
                                 point = point.add(new Vec3d(parentPos)).add(single.getValue().getAndUpdateBuilder(world, parentPos).info.placementInfo.placementPosition);
-                                if(point.distanceTo(direction) < single.getValue().gauge.value() * 0.5) {
-                                    double angle = angleBetween(point.toMatrix3(), direction.toMatrix3());
-                                    if(angle < minAngle && point.distanceTo(direction) < minDist) {
+                                if(point.distanceTo(this.point) < single.getValue().gauge.value() * 0.5) {
+                                    double angle = angleBetween(point.toMatrix3(), this.point.toMatrix3());
+                                    if(angle < minAngle && point.distanceTo(this.point) < minDist) {
                                         minAngle = angle;
-                                        minDist = point.distanceTo(direction);
+                                        minDist = point.distanceTo(this.point);
                                         best = new TrackNode(single.getValue(), i, world, parentPos);
                                     }
                                 }

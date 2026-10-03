@@ -46,23 +46,15 @@ public class TrackNode {
         int hori = Math.max((int) (trackSingleGeometrySegment.gauge.scale() * 2), 1);
         int vert = 1;
         TrackNode best = null;
-        double minAngle = 90;
-        double minDist = 0x3f;
+        double bestScore = Double.MAX_VALUE;
 
-        // 3D 前向：由 yaw + pitch 决定
-        // MC 约定 yaw=0 -> +Z, yaw=90 -> -X, pitch>0 朝下
-        double yawRad = Math.toRadians(this.point.getYaw());
-        double pitchRad = Math.toRadians(this.point.getPitch());
-        double cp = Math.cos(pitchRad);
-        Vec3d forwardVec = new Vec3d(
-                -Math.sin(yawRad) * cp,
-                -Math.sin(pitchRad),
-                Math.cos(yawRad) * cp
-        );
-        if (!forward) {
-            forwardVec = forwardVec.scale(-1);
-        }
-        final double cosCone = Math.cos(Math.toRadians(45)); // 锥形半角 45°
+        final double maxAngleRad = Math.toRadians(20);
+        final double cosCone = Math.cos(maxAngleRad);
+
+        // 当前点的 3D 前向（yaw + pitch，不含 roll）
+        Vec3d forwardVec = forwardVector(this.point);
+        // 位置锥形方向：forward 决定往前还是往后扫
+        Vec3d coneVec = forward ? forwardVec : forwardVec.scale(-1);
 
         for (int x = -hori; x <= hori; x++) {
             for (int y = -vert; y <= vert; y++) {
@@ -81,17 +73,23 @@ public class TrackNode {
                         if (trackBlock == null) continue;
                         for (Map.Entry<Gauge, TrackSingleGeometrySegment> single : trackBlock.paths.getFirst().entrySet()) {
                             List<VecYPR> points = single.getValue().pointsCache;
+                            double maxDist = single.getValue().gauge.value();
                             for (int i = 0; i < points.size(); i++) {
                                 VecYPR cand = points.get(i)
                                         .add(new Vec3d(parentPos))
                                         .add(single.getValue()
                                                 .getAndUpdateBuilder(world, parentPos).info.placementInfo.placementPosition);
 
-                                // 距离过滤
+                                // 距离硬上限
                                 double d = cand.distanceTo(this.point);
-                                if (d >= single.getValue().gauge.value() * 0.5) continue;
+                                if (d >= maxDist) continue;
 
-                                // 3D 锥形过滤
+                                // 几乎重合：直接认定
+                                if (d < 0.1) {
+                                    return new TrackNode(single.getValue(), i, world, parentPos);
+                                }
+
+                                // 3D 位置锥形
                                 Vec3d offset = new Vec3d(
                                         cand.x - this.point.x,
                                         cand.y - this.point.y,
@@ -100,13 +98,23 @@ public class TrackNode {
                                 double dist = offset.length();
                                 if (dist > 1e-4) {
                                     Vec3d dir = offset.scale(1.0 / dist);
-                                    if (dir.dotProduct(forwardVec) < cosCone) continue;
+                                    if (dir.dotProduct(coneVec) < cosCone) continue;
                                 }
 
-                                double angle = angleBetween(cand.toMatrix3(), this.point.toMatrix3());
-                                if (angle < minAngle && d < minDist) {
-                                    minAngle = angle;
-                                    minDist = d;
+                                // 姿态前向夹角（不含 roll）
+                                Vec3d candForward = forwardVector(cand);
+                                double dotFF = forwardVec.dotProduct(candForward);
+                                double absDot = Math.max(0.0, Math.min(1.0, Math.abs(dotFF)));
+                                double angleRad = Math.acos(absDot); // [0, π/2]
+                                if (angleRad > maxAngleRad) continue;
+
+                                // 组合评分：距离和角度各自归一化后加权
+                                double distNorm  = d / maxDist;
+                                double angleNorm = angleRad / maxAngleRad;
+                                double score = 0.7 * distNorm + 0.3 * angleNorm;
+
+                                if (score < bestScore) {
+                                    bestScore = score;
                                     best = new TrackNode(single.getValue(), i, world, parentPos);
                                 }
                             }
@@ -118,15 +126,18 @@ public class TrackNode {
         return best;
     }
 
-    public static double angleBetween(Matrix3 a, Matrix3 b) {
-        // 相对旋转 = a^-1 * b = a^T * b （对纯旋转矩阵）
-        Quaternion qa = a.toQuaternion();
-        Quaternion qb = b.toQuaternion();
-
-        // 点积
-        double dot = qa.x * qb.x + qa.y * qb.y + qa.z * qb.z + qa.w * qb.w;
-        // 取绝对值：q 和 -q 表示同一旋转
-        double absDot = Math.min(1.0, Math.abs(dot));
-        return 2.0 * Math.acos(absDot);
+    // 3D 前向：由 yaw + pitch 决定，roll 不参与
+    // 3D 前向：VecYPR 的 yaw 是 IR 约定，先转成 MC yaw；pitch 不参与 roll
+    private static Vec3d forwardVector(VecYPR p) {
+        // IR yaw -> MC yaw（和 TrackSnapUtil 里的 yawHead 转换一致）
+        float mcYaw = ((540 - p.getYaw()) % 360 + 180) % 360;
+        double yawRad = Math.toRadians(mcYaw);
+        double pitchRad = Math.toRadians(p.getPitch());
+        double cp = Math.cos(pitchRad);
+        return new Vec3d(
+                -Math.sin(yawRad) * cp,
+                -Math.sin(pitchRad),
+                Math.cos(yawRad) * cp
+        );
     }
 }

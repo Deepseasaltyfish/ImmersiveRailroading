@@ -1,14 +1,12 @@
 package cam72cam.immersiverailroading.render.util;
 
+import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.render.ExpireableMap;
 import cam72cam.immersiverailroading.render.rail.RailRender;
 import cam72cam.immersiverailroading.track.CubicCurve;
 import cam72cam.immersiverailroading.track.VecYPR;
-import cam72cam.immersiverailroading.track.graph.TrackMultiGeometrySegment;
-import cam72cam.immersiverailroading.track.graph.TrackRegion;
-import cam72cam.immersiverailroading.track.graph.TrackSingleGeometrySegment;
-import cam72cam.immersiverailroading.track.graph.WorldData;
+import cam72cam.immersiverailroading.track.graph.*;
 import cam72cam.immersiverailroading.util.RailInfo;
 import cam72cam.mod.MinecraftClient;
 import cam72cam.mod.entity.Player;
@@ -18,8 +16,10 @@ import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.render.GlobalRender;
 import cam72cam.mod.render.opengl.*;
+import cam72cam.mod.text.PlayerMessage;
 import cam72cam.mod.world.World;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -156,6 +156,25 @@ public class VolumetricCurveRenderer {
                     drawBlockWireFrame(info.placementInfo.placementPosition.scale(-1).add(0.5,0.5,0.5), currentState, Color.YELLOW, 1, 1/16f);
                     renderCurve(single.getValue().pointsCache, Color.LIME, 1 / 16f, currentState.clone().translate(0, 1, 0));
                     renderHandles(single.getValue().baseCurve, Color.MAGENTA, Color.CYAN, Color.RED, 1 / 16f, 1 / 4f, currentState.clone().translate(0, 1 + 1 / 16f, 0));
+
+                    TrackNode node = new TrackNode(single.getValue(), true, world, blockPos);
+                    TrackNode next = node.getConn(world, blockPos, false);
+                    if(next != null) {
+                        List<VecYPR> conn = new ArrayList<>();
+                        conn.add(node.point);
+                        conn.add(next.point);
+                        renderCurve(conn, Color.ORANGE, 1/16f, state.clone().translate(0, 1 + 1/32f, 0));
+                    }
+
+                    TrackNode node2 = new TrackNode(single.getValue(), false, world, blockPos);
+                    TrackNode next2 = node2.getConn(world, blockPos, true);
+                    if(next2 != null) {
+                        List<VecYPR> conn2 = new ArrayList<>();
+                        conn2.add(node2.point);
+                        conn2.add(next2.point);
+                        renderCurve(conn2, Color.ORANGE, 1/16f, state.clone().translate(0, 1 + 1/32f, 0));
+                    }
+
 //                  renderDebug(info, currentState);
                 }
             }

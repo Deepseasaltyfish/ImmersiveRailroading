@@ -3,6 +3,7 @@ package cam72cam.immersiverailroading.track.graph;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.mod.ModCore;
 import cam72cam.mod.item.ItemStack;
+import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.serialization.TagCompound;
 import net.jpountz.lz4.LZ4Compressor;
 import net.jpountz.lz4.LZ4Factory;
@@ -122,5 +123,35 @@ public class TrackRegionUtil {
         byte[] bytes = new byte[buffer.getInt()];
         buffer.get(bytes);
         return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    // region is 512 * worldHeight * 512, only x/z are limited
+    public static Vec3i toRegionBlockPos(Vec3i blockPos) {
+        return new Vec3i(blockPos.x & 0x1FF, blockPos.y, blockPos.z & 0x1FF);
+    }
+
+    public static Vec3i toBlockPos(long regionPos, Vec3i regionBlockPos) {
+        int regionX = (int) (regionPos >> 32);
+        int regionZ = (int) regionPos;
+        return new Vec3i(
+                (regionX << 9) + regionBlockPos.x,
+                regionBlockPos.y,
+                (regionZ << 9) + regionBlockPos.z
+        );
+    }
+
+    public static long vecToRegion(Vec3i pos) {
+        int factor = 9; // 512 blocks per region (2^9 = 512)
+        long x = pos.x >> factor;
+        long z = pos.z >> factor;
+        return (x << 32) | (z & 0xFFFFFFFFL);
+    }
+
+    static int regionX(long region) {
+        return (int) (region >> 32);
+    }
+
+    static int regionZ(long region) {
+        return (int) region;
     }
 }

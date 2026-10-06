@@ -7,6 +7,7 @@ import cam72cam.immersiverailroading.track.graph.TrackMultiGeometrySegment;
 import cam72cam.immersiverailroading.track.graph.TrackNode;
 import cam72cam.immersiverailroading.track.graph.TrackSingleGeometrySegment;
 import cam72cam.immersiverailroading.track.graph.WorldData;
+import cam72cam.mod.MinecraftClient;
 import cam72cam.mod.entity.Player;
 import cam72cam.mod.entity.boundingbox.IBoundingBox;
 import cam72cam.mod.item.ItemStack;
@@ -98,11 +99,11 @@ public class IRCommand extends Command {
 					TrackMultiGeometrySegment trackBlock = WorldData.get(player.get().getWorld()).getTrackBlock(new Vec3i(x, y, z));
 					for(Map.Entry<Gauge, TrackSingleGeometrySegment> single : trackBlock.paths.getFirst().entrySet()){
 						TrackNode node = new TrackNode(single.getValue(), true, player.get().getWorld(), new Vec3i(x, y, z));
-						TrackNode next = node.getConn(player.get().getWorld(), new Vec3i(x, y, z), false);
+						TrackNode next = node.getConn(player.get().getWorld(), false);
 						sender.accept(PlayerMessage.direct("node:" + node.point + " next:" + (next == null ? "null" : next.point)));
 
 						TrackNode node2 = new TrackNode(single.getValue(), false, player.get().getWorld(), new Vec3i(x, y, z));
-						TrackNode next2 = node2.getConn(player.get().getWorld(), new Vec3i(x, y, z), true);
+						TrackNode next2 = node2.getConn(player.get().getWorld(), true);
 						sender.accept(PlayerMessage.direct("node2:" + node2.point + " next2:" + (next2 == null ? "null" : next2.point)));
 					}
 					return true;
@@ -113,6 +114,29 @@ public class IRCommand extends Command {
 				sender.accept(PlayerMessage.direct("This command is not supported for non-players (yet)"));
 			}
 		}
+
+		if(args[0].equals("getTrackBlock")) {
+			if(player.isPresent()) {
+				try{
+					int x = Integer.parseInt(args[1]);
+					int y = Integer.parseInt(args[2]);
+					int z = Integer.parseInt(args[3]);
+					Vec3i pos = new Vec3i(x, y, z);
+					TrackMultiGeometrySegment trackBlock = WorldData.get(MinecraftClient.getPlayer().getWorld()).getTrackBlock(pos);
+					if(trackBlock != null) {
+						sender.accept(PlayerMessage.direct("succeed"));
+						return true;
+					} else {
+						sender.accept(PlayerMessage.direct("failed"));
+					}
+				}catch(Exception e){
+					sender.accept(PlayerMessage.direct("Invalid arguments exception"));
+				}
+			} else {
+				sender.accept(PlayerMessage.direct("This command is not supported for non-players (yet)"));
+			}
+		}
+
 		return false;
 	}
 }

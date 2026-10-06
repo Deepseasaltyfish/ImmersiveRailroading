@@ -77,7 +77,7 @@ public abstract class BuilderBase {
 					tileRail.setBuildTimeMs(System.currentTimeMillis());
 					WorldData.get(world).setTrackBlock(
 							tileRail.getPos(),
-							new TrackMultiGeometrySegment(tileRail, world, tileRail.getPos())
+							new TrackMultiGeometrySegment(tileRail, world)
 					);
 				} else {
 					track.placeTrack(true).markDirty();

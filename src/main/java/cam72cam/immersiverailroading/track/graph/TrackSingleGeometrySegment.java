@@ -22,6 +22,9 @@ import java.util.HashSet;
 import java.util.List;
 
 public class TrackSingleGeometrySegment {
+    private final long regionPos;// addition, not necessary
+    private final Vec3i regionBlockPos;// addition, not necessary
+
     protected final Gauge gauge;
     protected final int switchIdex;
     protected final float yaw;
@@ -36,21 +39,25 @@ public class TrackSingleGeometrySegment {
     public final List<VecYPR> pointsCache;
 
     private BuilderCubicCurve builderCache;
+    private World builderWorldCache;
 
-    public TrackSingleGeometrySegment(TileRail trackBlock, World world, Vec3i pos, int switchIndex, Gauge gauge) {// todo: switch, gauge
-        this.gauge = trackBlock.info.settings.gauge;
+    public TrackSingleGeometrySegment(TileRail trackBlock, World world, int switchIndex, Gauge gauge) {// todo: switch, gauge
+        this.regionPos = TrackRegionUtil.vecToRegion(trackBlock.getPos());
+        this.regionBlockPos = TrackRegionUtil.toRegionBlockPos(trackBlock.getPos());
+
+        this.gauge = gauge;
         this.switchIdex = switchIndex;
         this.yaw = trackBlock.info.placementInfo.yaw;
         this.placementPosition = trackBlock.info.placementInfo.placementPosition;
         BuilderCubicCurve builder;
         if(trackBlock.info.settings.type == TrackItems.SWITCH) { // legacy switch straight way
-            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, pos);
+            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, trackBlock.getPos());
         } else if(trackBlock.info.settings.type == TrackItems.TURNTABLE) {
-            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, pos);
+            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, trackBlock.getPos());
         } else if(trackBlock.info.settings.type == TrackItems.TRANSFERTABLE) {
-            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, pos);
+            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, trackBlock.getPos());
         } else{ // common way and legacy switch non-straight way
-            builder = (BuilderCubicCurve) trackBlock.info.getBuilder(world, pos);
+            builder = (BuilderCubicCurve) trackBlock.info.getBuilder(world, trackBlock.getPos());
         }
 
         this.baseCurve = builder.getCurve();
@@ -68,7 +75,10 @@ public class TrackSingleGeometrySegment {
 //        int a = 1;
     }
 
-    public TrackSingleGeometrySegment(ByteBuffer buffer, World world, Vec3i pos) {
+    public TrackSingleGeometrySegment(ByteBuffer buffer, World world, long regionPos, Vec3i regionBlockPos) {
+        this.regionPos = regionPos;
+        this.regionBlockPos = regionBlockPos;
+
         int version = buffer.getInt(); // version
         if (version != 1) {
             throw new RuntimeException(String.format("Invalid single track geometry segment data version %d", version));
@@ -160,8 +170,8 @@ public class TrackSingleGeometrySegment {
                 arcLenFactors, rolls, rollCtrls, yOffsets, yOffsetCtrls, zOffsets, zOffsetCtrls
         );
 
-        positionsCache = getAndUpdateBuilder(world, pos).positionsCache;
-        pointsCache = getAndUpdateBuilder(world, pos).getPath(0.25 * gauge.scale());
+        positionsCache = getAndUpdateBuilder(world).positionsCache;
+        pointsCache = getAndUpdateBuilder(world).getPath(0.25 * gauge.scale());
     }
 
     public int sizeBytes() {
@@ -262,8 +272,10 @@ public class TrackSingleGeometrySegment {
         }
     }
 
-    public BuilderCubicCurve getAndUpdateBuilder(World world, Vec3i pos) { // we can get renderData the same as origin
-        if(builderCache != null) return builderCache;
+    public BuilderCubicCurve getAndUpdateBuilder(World world) { // we can get renderData the same as origin
+        if (builderCache != null && builderWorldCache == world) {
+            return builderCache;
+        }
 
         RailSettings settings = new RailSettings(
                 gauge, referenceTrack,
@@ -276,12 +288,13 @@ public class TrackSingleGeometrySegment {
                 false, false,
                 0, 0//todo
         );
-        RailInfo info = new RailInfo(//todo: 现在只有自定义曲线是对的
+        RailInfo info = new RailInfo(
                 settings,
                 new PlacementInfo(baseCurve.p1, TrackDirection.NONE, yaw, baseCurve.ctrl1).offset(placementPosition),
-                new PlacementInfo(baseCurve.p2, TrackDirection.NONE, yaw, baseCurve.ctrl2).offset(placementPosition) // well this is how it works, internal override logic...
+                new PlacementInfo(baseCurve.p2, TrackDirection.NONE, yaw, baseCurve.ctrl2).offset(placementPosition)
         );
-        builderCache = new BuilderCubicCurve(info, world, pos, false);
+        builderCache = new BuilderCubicCurve(info, world, TrackRegionUtil.toBlockPos(regionPos, regionBlockPos), false);
+        builderWorldCache = world;
         return builderCache;
     }
 }

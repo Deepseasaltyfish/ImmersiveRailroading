@@ -318,7 +318,7 @@ public class TileRail extends TileRailBase {
 		super.load(nbt);
 		if (getWorld().isServer) {
 			if(WorldData.get(getWorld()).getTrackBlock(getPos()) == null) {
-				TrackMultiGeometrySegment trackBlock = new TrackMultiGeometrySegment(this, getWorld(), getPos());
+				TrackMultiGeometrySegment trackBlock = new TrackMultiGeometrySegment(this, getWorld());
 				WorldData.get(getWorld()).setTrackBlock(getPos(), trackBlock);
 			}
 		}

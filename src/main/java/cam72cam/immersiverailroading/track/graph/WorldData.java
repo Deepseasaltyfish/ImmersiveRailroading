@@ -1,20 +1,32 @@
 package cam72cam.immersiverailroading.track.graph;
 
 import cam72cam.immersiverailroading.ImmersiveRailroading;
+import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.net.TrackRegionPacket;
 import cam72cam.mod.entity.Player;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;
+import net.minecraft.util.math.Vec3d;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
+import static cam72cam.immersiverailroading.track.graph.TrackRegionUtil.vecToRegion;
+
 public class WorldData {
-    private final static Map<World, WorldData> LOADED = new HashMap<>();
-    private final File directory;
     private final World world;
-    public final Map<Long, TrackRegion> regions;//todo 多维度还没有
+    private final File directory;
+    public final Map<Long, TrackRegion> regions;//todo 客户端如何申请获取某处的region，另外现在还没做unload region，做了会需要处理很多问题
+
+    private final static Map<World, WorldData> LOADED = new HashMap<>();
+
+    // 拓扑层 todo 这三个东西虽然还不完全确定，不过应该也大差不差，不会少于这些
+    public final Map<TrackNodeId, TrackNode> nodes = new HashMap<>();
+    final Map<TrackNodeId, List<TrackEdge>> outgoing = new HashMap<>();// 为了更新node时能及时更新相关边
+    public final Set<TrackEdge> edges = new HashSet<>();
+
+    //todo set/removeTrackBlock加拓扑构建，需注意每次要检查trackBlock的gag以及拓展一定范围的区域能接触到gag的trackBlock也需要更新，保证万无一失
 
     private WorldData(World world, File worldDirectory) {
         this.world = world;
@@ -38,7 +50,7 @@ public class WorldData {
                         int x = Integer.parseInt(parts[1]);
                         int z = Integer.parseInt(parts[2]);
                         long id = ((long) x << 32) | (z & 0xFFFFFFFFL);
-                        TrackRegion region = new TrackRegion(TrackRegionUtil.readBuffer(file), world);
+                        TrackRegion region = new TrackRegion(id, TrackRegionUtil.readBuffer(file), world);
                         synchronized (regions) {
                             regions.put(id, region);
                         }
@@ -60,24 +72,9 @@ public class WorldData {
     }
 
     private File regionFile(long region) {
-        int x = regionX(region);
-        int z = regionZ(region);
+        int x = TrackRegionUtil.regionX(region);
+        int z = TrackRegionUtil.regionZ(region);
         return new File(directory, String.format("r.%d.%d.irr", x, z));
-    }
-
-    public static long vecToRegion(Vec3i pos) {
-        int factor = 9; // 512 blocks per region (2^9 = 512)
-        long x = pos.x >> factor;
-        long z = pos.z >> factor;
-        return (x << 32) | (z & 0xFFFFFFFFL);
-    }
-
-    private static int regionX(long region) {
-        return (int) (region >> 32);
-    }
-
-    private static int regionZ(long region) {
-        return (int) region;
     }
 
     protected TrackRegion getRegion(Vec3i pos, boolean create) {
@@ -89,7 +86,7 @@ public class WorldData {
         synchronized (regions) {
             TrackRegion region = regions.get(id);
             if (region == null && create) {
-                region = new TrackRegion();
+                region = new TrackRegion(id);
                 regions.put(id, region);
             }
             return region;
@@ -104,16 +101,33 @@ public class WorldData {
         return null;
     }
 
+    public void setTrackBlock(Vec3i pos, TrackMultiGeometrySegment block) {
+        long regionId = vecToRegion(pos);
+        TrackRegion region = getRegionById(regionId, true);
+
+        // 同位置有旧的多几何段，先清它的拓扑
+        if (region.getTrackBlock(pos) != null) {
+            removeTopologyFor(regionId, TrackRegionUtil.toRegionBlockPos(pos));
+        }
+
+        region.setTrackBlock(pos, block);
+
+        buildTopologyFor(pos, block);
+        researchNeighbors(pos);
+    }
+
     public boolean removeTrackBlock(Vec3i pos) {
-        TrackRegion region = getRegion(pos, false);
+        long regionId = vecToRegion(pos);
+        TrackRegion region = getRegionById(regionId, false);
         if (region == null) {
             return false;
         }
-        return region.removeTrackBlock(pos);
-    }
+        if (!region.removeTrackBlock(pos)) {
+            return false;
+        }
 
-    public void setTrackBlock(Vec3i pos, TrackMultiGeometrySegment block) {
-        getRegion(pos, true).setTrackBlock(pos, block);
+        removeTopologyFor(regionId, TrackRegionUtil.toRegionBlockPos(pos));
+        return true;
     }
 
     public Collection<TrackRegion> getRegions() {
@@ -181,7 +195,10 @@ public class WorldData {
             if (LOADED.containsKey(world)) {
                 ImmersiveRailroading.warn("World %s / %s already loaded!  This is a bug!", levelDirectory.toString(), world.getId());
             }
-            LOADED.put(world, new WorldData(world, new File(levelDirectory, "immersiverailroading" + world.getId())));
+            WorldData data = new WorldData(world, new File(levelDirectory, "immersiverailroading" + world.getId()));
+            LOADED.put(world, data);
+
+            data.buildAll();
         }
         ImmersiveRailroading.info("World %s / %s loaded in %sms", levelDirectory.toString(), world.getId(), System.currentTimeMillis() - st);
     }
@@ -244,6 +261,187 @@ public class WorldData {
             for (TrackRegion region : regions.values()) {
                 region.dirty = false;
             }
+        }
+    }
+
+    //todo 拓扑层草稿代码，简单情况已经初步实现，需要继续完善
+    protected void buildTopologyFor(Vec3i absPos, TrackMultiGeometrySegment block) {
+        for (int pathIndex = 0; pathIndex < block.paths.size(); pathIndex++) {
+            Map<Gauge, TrackSingleGeometrySegment> branch = block.paths.get(pathIndex);
+            for (Map.Entry<Gauge, TrackSingleGeometrySegment> entry : branch.entrySet()) {
+                TrackSingleGeometrySegment single = entry.getValue();
+                int lastIdx = single.pointsCache.size() - 1;
+
+                // start 节点：自身 yaw 指向 single 内部，离开 single 要用 backward
+                TrackNode startNode = new TrackNode(single, 0, world, absPos);
+                addNode(startNode);
+                searchAndAddGap(startNode, false);
+
+                if (lastIdx > 0) {
+                    // end 节点：自身 yaw 仍指向 single 内部（从 start 到 end 方向），离开 single 要用 forward
+                    TrackNode endNode = new TrackNode(single, lastIdx, world, absPos);
+                    addNode(endNode);
+                    searchAndAddGap(endNode, true);
+
+                    // single 内部双向 NORMAL 边
+                    addEdge(startNode.id, endNode.id, TrackEdge.EdgeType.NORMAL);
+                    addEdge(endNode.id, startNode.id, TrackEdge.EdgeType.NORMAL);
+                }
+            }
+        }
+    }
+
+    private void searchAndAddGap(TrackNode node, boolean forward) {
+        TrackNode other = node.getConn(world, forward);
+        if (other == null || other.id.equals(node.id)) return;
+
+        addNode(other);
+        addEdge(node.id, other.id, TrackEdge.EdgeType.GAP);
+
+        int lastIdx = other.trackSingleGeometrySegment.pointsCache.size() - 1;
+        if (other.index != 0 && other.index != lastIdx) {
+            Vec3i otherAbsPos = TrackRegionUtil.toBlockPos(other.id.regionPos, other.id.regionBlockPos);
+            TrackNode otherStartNode = new TrackNode(other.trackSingleGeometrySegment, 0, world, otherAbsPos);
+            TrackNode otherEndNode = new TrackNode(other.trackSingleGeometrySegment, lastIdx, world, otherAbsPos);
+            addNode(otherStartNode);
+            addNode(otherEndNode);
+            addEdge(other.id, otherStartNode.id, TrackEdge.EdgeType.NORMAL);
+            addEdge(other.id, otherEndNode.id, TrackEdge.EdgeType.NORMAL);
+        }
+    }
+
+    private void addNode(TrackNode node) {
+        nodes.putIfAbsent(node.id, node);
+    }
+
+    private void addEdge(TrackNodeId from, TrackNodeId to, TrackEdge.EdgeType type) {
+        if (from.equals(to)) return;
+        TrackEdge edge = new TrackEdge(from, to, type);
+        if (edges.add(edge)) {
+            outgoing.computeIfAbsent(from, k -> new ArrayList<>()).add(edge);
+        }
+    }
+
+    protected void removeEdge(TrackEdge edge) {
+        if (edges.remove(edge)) {
+            List<TrackEdge> list = outgoing.get(edge.from);
+            if (list != null) {
+                list.remove(edge);
+            }
+        }
+    }
+
+    protected void removeTopologyFor(long regionId, Vec3i relBlockPos) {
+        Set<TrackNodeId> affected = new HashSet<>();
+        for (TrackNodeId id : nodes.keySet()) {
+            if (id.regionPos == regionId && id.regionBlockPos.equals(relBlockPos)) {
+                affected.add(id);
+            }
+        }
+        if (affected.isEmpty()) return;
+
+        // 收集所有涉及这些节点的边：出边 + 指向它们的所有入边
+        Set<TrackEdge> toRemove = new HashSet<>();
+        for (TrackNodeId id : affected) {
+            List<TrackEdge> out = outgoing.get(id);
+            if (out != null) {
+                toRemove.addAll(out);
+            }
+        }
+        for (List<TrackEdge> list : outgoing.values()) {
+            for (TrackEdge e : list) {
+                if (affected.contains(e.to)) {
+                    toRemove.add(e);
+                }
+            }
+        }
+
+        for (TrackEdge e : toRemove) {
+            removeEdge(e);
+        }
+
+        for (TrackNodeId id : affected) {
+            nodes.remove(id);
+            outgoing.remove(id);
+        }
+    }
+
+    protected void buildTopologyForRegion(TrackRegion region) {
+        for (Map.Entry<Vec3i, TrackMultiGeometrySegment> entry : region.trackBlocks.entrySet()) {
+            Vec3i absPos = region.toBlockPos(entry.getKey());
+            buildTopologyFor(absPos, entry.getValue());
+        }
+    }
+
+    public void buildAll() {
+        for (TrackRegion region : regions.values()) {
+            buildTopologyForRegion(region);
+        }
+    }
+
+    //下面3个目前是客户端only
+    public void rebuildTopologyAround(long regionId) {
+        int rx = TrackRegionUtil.regionX(regionId);
+        int rz = TrackRegionUtil.regionZ(regionId);
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                long id = ((long) (rx + dx) << 32) | ((rz + dz) & 0xFFFFFFFFL);
+                TrackRegion region = regions.get(id);
+                if (region != null) {
+                    rebuildTopologyForRegion(region);
+                }
+            }
+        }
+    }
+
+    protected void rebuildTopologyForRegion(TrackRegion region) {
+        // 清掉本 region 的节点
+        Set<TrackNodeId> regionNodes = new HashSet<>();
+        for (TrackNodeId id : nodes.keySet()) {
+            if (id.regionPos == region.regionPos) {
+                regionNodes.add(id);
+            }
+        }
+        for (TrackNodeId id : regionNodes) {
+            // 清掉以它为一端的出边和指向它的入边
+            List<TrackEdge> out = outgoing.get(id);
+            if (out != null) {
+                for (TrackEdge e : new ArrayList<>(out)) {
+                    removeEdge(e);
+                }
+            }
+            for (List<TrackEdge> list : outgoing.values()) {
+                for (TrackEdge e : new ArrayList<>(list)) {
+                    if (e.to.equals(id)) {
+                        removeEdge(e);
+                    }
+                }
+            }
+            nodes.remove(id);
+            outgoing.remove(id);
+        }
+
+        // 重建
+        buildTopologyForRegion(region);
+    }
+
+    private void researchNeighbors(Vec3i newAbsPos) {
+        double radius = 4.0;
+        double radiusSq = radius * radius;
+
+        List<TrackNode> nearbyEndpoints = new ArrayList<>();
+        for (TrackNode n : nodes.values()) {
+            int lastIdx = n.trackSingleGeometrySegment.pointsCache.size() - 1;
+            if (n.index != 0 && n.index != lastIdx) continue;
+            Vec3i absPos = TrackRegionUtil.toBlockPos(n.id.regionPos, n.id.regionBlockPos);
+            if (new Vec3d(newAbsPos.internal()).squareDistanceTo(new Vec3d(absPos.internal())) > radiusSq) continue;
+            nearbyEndpoints.add(n);
+        }
+
+        for (TrackNode n : nearbyEndpoints) {
+            int lastIdx = n.trackSingleGeometrySegment.pointsCache.size() - 1;
+            boolean forward = (n.index == lastIdx);
+            searchAndAddGap(n, forward);
         }
     }
 }

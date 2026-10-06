@@ -388,6 +388,7 @@ public abstract class Locomotive extends FreightTank {
 			if (getDefinition().isCog() && getTickCount() % 20 == 0) {
 				SimulationState state = getCurrentState();
 				if (state != null) {
+					//todo
 					ITrack found = MovementTrack.findTrack(getWorld(), state.couplerPositionFront, state.yaw, gauge.value());
 					if (found instanceof TileRailBase) {
 						TileRailBase onTrack = (TileRailBase) found;

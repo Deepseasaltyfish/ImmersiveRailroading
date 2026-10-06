@@ -41,9 +41,11 @@ public class TrackRegionPacket extends Packet {
             return;
         }
 
-        TrackRegion region = new TrackRegion(ByteBuffer.wrap(raw), world);
+        TrackRegion region = new TrackRegion(id, ByteBuffer.wrap(raw), world);
         synchronized (data.regions) {
             data.regions.put(id, region);
         }
+
+        data.rebuildTopologyAround(id);
     }
 }

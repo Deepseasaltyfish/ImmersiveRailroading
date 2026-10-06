@@ -13,15 +13,27 @@ import java.util.List;
 import java.util.Map;
 
 public class TrackMultiGeometrySegment {
+    // todo 这些可有可无的冗余东西addition也许在之后拓扑层能缩短调用链简化代码微微提高效率？要么不做，要么至少要做到能溯源到上级方便获得上级的数据？
+    //  不过考虑到加的东西很少，就先留着，等完成后如果确实没什么用还是删了
+    private final long regionPos;// addition, not necessary
+    private final Vec3i regionBlockPos;// addition, not necessary
+
     private final long buildTime;
     public final List<Map<Gauge, TrackSingleGeometrySegment>> paths;
-    private int switchState;
+    protected  int switchState;
     private int tableIndex;
 
-    public TrackMultiGeometrySegment(TileRail trackBlock, World world, Vec3i pos) {
+    public Vec3i getBlockPos() {
+        return TrackRegionUtil.toBlockPos(regionPos, regionBlockPos);
+    }
+
+    public TrackMultiGeometrySegment(TileRail trackBlock, World world) {
+        this.regionPos = TrackRegionUtil.vecToRegion(trackBlock.getPos());
+        this.regionBlockPos = TrackRegionUtil.toRegionBlockPos(trackBlock.getPos());
+
         buildTime = trackBlock.getBuildTimeMs();
 
-        TrackSingleGeometrySegment segment = new TrackSingleGeometrySegment(trackBlock, world, pos, 0, Gauge.standard());
+        TrackSingleGeometrySegment segment = new TrackSingleGeometrySegment(trackBlock, world, 0, trackBlock.info.settings.gauge);
         paths = new ArrayList<>();
         Map<Gauge, TrackSingleGeometrySegment> branch = new HashMap<>();
         branch.put(trackBlock.info.settings.gauge, segment);
@@ -40,7 +52,10 @@ public class TrackMultiGeometrySegment {
         //todo
     }
 
-    public TrackMultiGeometrySegment(ByteBuffer buffer, World world, Vec3i pos) {
+    public TrackMultiGeometrySegment(ByteBuffer buffer, World world, long regionPos, Vec3i regionBlockPos) {
+        this.regionPos = regionPos;
+        this.regionBlockPos = regionBlockPos;
+
         int version = buffer.getInt(); // version
         if (version != 1) {
             throw new RuntimeException(String.format("Invalid multi track geometry segment data version %d", version));
@@ -57,7 +72,7 @@ public class TrackMultiGeometrySegment {
             Map<Gauge, TrackSingleGeometrySegment> branch = new HashMap<>();
             for(int j = 0; j < segmentCount; j++) {
                 Gauge gauge = Gauge.from(buffer.getDouble()); // segment gauge
-                branch.put(gauge, new TrackSingleGeometrySegment(buffer, world, pos)); // single segment
+                branch.put(gauge, new TrackSingleGeometrySegment(buffer, world, regionPos, regionBlockPos)); // single segment
             }
             paths.add(branch);
         }

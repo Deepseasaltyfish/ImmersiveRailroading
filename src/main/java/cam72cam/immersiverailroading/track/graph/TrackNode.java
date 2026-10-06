@@ -7,40 +7,63 @@ import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;
 
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 
 public class TrackNode {
+    public final TrackNodeId id;
+    // 运行时缓存，不参与持久化
+    //todo 持久化，
+    // 另外上级trackBlock相关更新了怎么办？
+    // 不过其实建立连接应当是由那边发起并且维护的这样才靠谱，那么我们还需要edge吗，还是拓展trackBlock那边呢
+    // 我们目前认为应当由于region持有拓扑
+    // 目前先不持久化拓扑层，等结构稳定后再看
+    private final long regionPos;// addition, not necessary
+    private final Vec3i regionBlockPos;// addition, not necessary
+
     public final TrackSingleGeometrySegment trackSingleGeometrySegment;
     public final int index;
 
     public final VecYPR point;
 
-    public TrackNode(TrackSingleGeometrySegment trackSingleGeometrySegment, int index, World world, Vec3i pos) {
-        this.trackSingleGeometrySegment = trackSingleGeometrySegment;
+    public TrackNode(TrackSingleGeometrySegment segment, int index, World world, Vec3i pos) {
+        this.regionPos = TrackRegionUtil.vecToRegion(pos);
+        this.regionBlockPos = TrackRegionUtil.toRegionBlockPos(pos);
+        this.trackSingleGeometrySegment = segment;
         this.index = index;
-        this.point = trackSingleGeometrySegment.pointsCache.get(index).add(new Vec3d(pos)).add(trackSingleGeometrySegment.getAndUpdateBuilder(world, pos).info.placementInfo.placementPosition);
+        this.point = segment.pointsCache.get(index)
+                .add(new Vec3d(pos))
+                .add(segment.getAndUpdateBuilder(world).info.placementInfo.placementPosition);
+        this.id = new TrackNodeId(regionPos, regionBlockPos, trackSingleGeometrySegment.switchIdex, trackSingleGeometrySegment.gauge, index);
     }
 
-    public TrackNode(TrackSingleGeometrySegment trackSingleGeometrySegment, boolean isStart, World world, Vec3i pos) {
-        this.trackSingleGeometrySegment = trackSingleGeometrySegment;
-        List<VecYPR> points = trackSingleGeometrySegment.pointsCache;
-        this.index = isStart ? 0 : points.size() - 1;
-        this.point = points.get(index).add(new Vec3d(pos)).add(trackSingleGeometrySegment.getAndUpdateBuilder(world, pos).info.placementInfo.placementPosition);
+    public TrackNode(TrackSingleGeometrySegment segment, boolean isStart, World world, Vec3i pos) {
+        this(segment, isStart ? 0 : segment.pointsCache.size() - 1, world, pos);
     }
 
-    public TrackNode offset(int indexOffset, World world, Vec3i pos) {
+    public int getSwitchState(World world) {
+        return WorldData.get(world).getTrackBlock(TrackRegionUtil.toBlockPos(regionPos, regionBlockPos)).switchState;
+    }
+
+//    public TrackNode(ByteBuffer buffer, World world, Vec3i pos) {
+//
+//    }
+
+    public TrackNode offset(int indexOffset, World world) {
         List<VecYPR> points = trackSingleGeometrySegment.pointsCache;
         int newIndex = index + indexOffset;
         if(newIndex >= 0 && newIndex < points.size()) {
-            return new TrackNode(trackSingleGeometrySegment, newIndex, world, pos);
+            return new TrackNode(trackSingleGeometrySegment, newIndex, world, TrackRegionUtil.toBlockPos(regionPos, regionBlockPos));
         } else {
             ImmersiveRailroading.error("invalid trackSingleGeometrySegment index %s: value out of boundary (%s)", newIndex, points.size());
             return this;
         }
     }
 
-    public TrackNode getConn(World world, Vec3i current, boolean forward) {
+    public TrackNode getConn(World world, boolean forward) {
+        if(world == null) return null;
+
         int hori = Math.max((int) (trackSingleGeometrySegment.gauge.scale() * 2), 1);
         int vert = 1;
         TrackNode best = null;
@@ -58,32 +81,32 @@ public class TrackNode {
             for (int y = -vert; y <= vert; y++) {
                 for (int z = -hori; z <= hori; z++) {
                     Vec3i scan = new Vec3i(this.point).add(x, y, z);
+                    if (WorldData.get(world) == null) continue;
                     TrackRegion trackRegion = WorldData.get(world).getRegion(scan, false);
                     if (trackRegion == null) continue;
-                    List<Vec3i> parents = trackRegion.trackBlockParents.get(TrackRegion.toRegionBlockPos(scan));
+                    List<Vec3i> parents = trackRegion.trackBlockParents.get(TrackRegionUtil.toRegionBlockPos(scan));
                     if (parents == null) continue;
                     for (Vec3i parentRelPos : parents) {
-                        long regionId = WorldData.vecToRegion(scan);
-                        Vec3i parentPos = TrackRegion.toBlockPos(regionId, parentRelPos);
-                        if (parentPos.equals(current)) continue;
+                        Vec3i parentPos = trackRegion.toBlockPos(parentRelPos);
+                        if (parentPos.equals(TrackRegionUtil.toBlockPos(regionPos, regionBlockPos))) continue;
 
                         TrackMultiGeometrySegment trackBlock = WorldData.get(world).getTrackBlock(parentPos);
                         if (trackBlock == null) continue;
+
                         for (Map.Entry<Gauge, TrackSingleGeometrySegment> single : trackBlock.paths.getFirst().entrySet()) {
                             List<VecYPR> points = single.getValue().pointsCache;
                             double maxDist = single.getValue().gauge.value();
                             for (int i = 0; i < points.size(); i++) {
                                 VecYPR cand = points.get(i)
                                         .add(new Vec3d(parentPos))
-                                        .add(single.getValue()
-                                                .getAndUpdateBuilder(world, parentPos).info.placementInfo.placementPosition);
+                                        .add(single.getValue().getAndUpdateBuilder(world).info.placementInfo.placementPosition);
 
                                 // 距离硬上限
                                 double d = cand.distanceTo(this.point);
                                 if (d >= maxDist) continue;
 
                                 // 几乎重合：直接认定
-                                if (d < 0.1) {
+                                if (d < 1e-3) {
                                     return new TrackNode(single.getValue(), i, world, parentPos);
                                 }
 

@@ -269,7 +269,7 @@ public class Config {
 		public static boolean keepStockLoaded = true;
 
 		@Comment("Train will run without chunk loading")
-		public static boolean offWorldPathing = true;
+		public static boolean offWorldPathing = false;
 
 		@Comment("Break blueprint preview block after building it")
 		public static boolean breakTilePreview = true;

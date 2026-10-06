@@ -4,12 +4,11 @@ import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class TrackRegion {
+    public final long regionPos;// addition, not necessary
+
     public final Map<Vec3i, TrackMultiGeometrySegment> trackBlocks;// fake final
     // key: gag region-relative pos, value: parent track block region-relative pos list
     public final HashMap<Vec3i, List<Vec3i>> trackBlockParents;
@@ -17,27 +16,24 @@ public class TrackRegion {
     boolean needsWriteToDisk;
     boolean dirty;
 
-    public TrackRegion() {
-        trackBlocks = new HashMap<>();
-        trackBlockParents = new HashMap<>();
+    public TrackRegion(long regionPos) {
+        this.regionPos = regionPos;
+        this.trackBlocks = new HashMap<>();
+        this.trackBlockParents = new HashMap<>();
     }
 
-    // region is 512 * worldHeight * 512, only x/z are limited
-    public static Vec3i toRegionBlockPos(Vec3i blockPos) {
-        return new Vec3i(blockPos.x & 0x1FF, blockPos.y, blockPos.z & 0x1FF);
-    }
-
-    public static Vec3i toBlockPos(long regionPos, Vec3i regionBlockPos) {
-        int regionX = (int) (regionPos >> 32);
-        int regionZ = (int) regionPos;
+    public Vec3i toBlockPos(Vec3i regionBlockPos) {
+        int rx = (int) (regionPos >> 32);
+        int rz = (int) regionPos;
         return new Vec3i(
-                (regionX << 9) + regionBlockPos.x,
+                (rx << 9) + regionBlockPos.x,
                 regionBlockPos.y,
-                (regionZ << 9) + regionBlockPos.z
+                (rz << 9) + regionBlockPos.z
         );
     }
 
-    public TrackRegion(ByteBuffer buffer, World world) {
+    public TrackRegion(long regionPos, ByteBuffer buffer, World world) {
+        this.regionPos = regionPos;
         int version = buffer.getInt();
         if (version != 1) {
             throw new RuntimeException(String.format("Invalid track block data version %d", version));
@@ -50,14 +46,14 @@ public class TrackRegion {
             int x = buffer.getInt();
             int y = buffer.getInt();
             int z = buffer.getInt();
-            Vec3i relBlockPos = new Vec3i(x, y, z);
-            TrackMultiGeometrySegment segment = new TrackMultiGeometrySegment(buffer, world, relBlockPos);
-            trackBlocks.put(relBlockPos, segment);
+            Vec3i regionBlockPos = new Vec3i(x, y, z);
+            TrackMultiGeometrySegment segment = new TrackMultiGeometrySegment(buffer, world, regionPos, regionBlockPos);
+            trackBlocks.put(regionBlockPos, segment);
 
             for (Vec3i offset : segment.getPositionsCache()) {
-                Vec3i gagPos = toRegionBlockPos(relBlockPos.add(offset));
+                Vec3i gagPos = TrackRegionUtil.toRegionBlockPos(regionBlockPos.add(offset));
                 List<Vec3i> parents = trackBlockParents.getOrDefault(gagPos, new ArrayList<>());
-                parents.add(relBlockPos);
+                parents.add(regionBlockPos);
                 trackBlockParents.put(gagPos, parents);
             }
         }
@@ -95,7 +91,7 @@ public class TrackRegion {
 
     public TrackMultiGeometrySegment getTrackBlock(Vec3i pos) {
         synchronized (trackBlocks) {
-            return trackBlocks.get(toRegionBlockPos(pos));
+            return trackBlocks.get(TrackRegionUtil.toRegionBlockPos(pos));
         }
     }
 
@@ -107,13 +103,13 @@ public class TrackRegion {
 
     public boolean removeTrackBlock(Vec3i pos) {
         synchronized (trackBlocks) {
-            Vec3i relPos = toRegionBlockPos(pos);
+            Vec3i relPos = TrackRegionUtil.toRegionBlockPos(pos);
             TrackMultiGeometrySegment removed = trackBlocks.remove(relPos);
             if (removed == null) {
                 return false;
             }
             for (Vec3i offset : removed.getPositionsCache()) {
-                Vec3i gagPos = toRegionBlockPos(relPos.add(offset));
+                Vec3i gagPos = TrackRegionUtil.toRegionBlockPos(relPos.add(offset));
                 List<Vec3i> parents = trackBlockParents.get(gagPos);
                 if (parents != null) {
                     parents.remove(relPos);
@@ -130,11 +126,11 @@ public class TrackRegion {
 
     public void setTrackBlock(Vec3i pos, TrackMultiGeometrySegment block) {
         synchronized (trackBlocks) {
-            Vec3i relBlockPos = toRegionBlockPos(pos);
+            Vec3i relBlockPos = TrackRegionUtil.toRegionBlockPos(pos);
             trackBlocks.put(relBlockPos, block);
 
             for (Vec3i offset : block.getPositionsCache()) {
-                Vec3i gagPos = toRegionBlockPos(relBlockPos.add(offset));
+                Vec3i gagPos = TrackRegionUtil.toRegionBlockPos(relBlockPos.add(offset));
                 List<Vec3i> parents = trackBlockParents.getOrDefault(gagPos, new ArrayList<>());
                 parents.add(relBlockPos);
                 trackBlockParents.put(gagPos, parents);

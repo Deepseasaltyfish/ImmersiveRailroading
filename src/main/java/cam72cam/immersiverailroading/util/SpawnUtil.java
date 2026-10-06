@@ -2,6 +2,7 @@ package cam72cam.immersiverailroading.util;
 
 import java.util.List;
 
+import cam72cam.immersiverailroading.Config;
 import cam72cam.immersiverailroading.entity.EntityMoveableRollingStock;
 import cam72cam.immersiverailroading.entity.EntityRollingStock;
 import cam72cam.immersiverailroading.entity.physics.Simulation;
@@ -14,6 +15,7 @@ import cam72cam.immersiverailroading.entity.EntityBuildableRollingStock;
 import cam72cam.immersiverailroading.entity.EntityCoupleableRollingStock.CouplerType;
 import cam72cam.immersiverailroading.registry.EntityRollingStockDefinition;
 import cam72cam.immersiverailroading.thirdparty.trackapi.IRPathingData;
+import cam72cam.immersiverailroading.track.graph.OffWorldMovementTrack;
 import cam72cam.mod.entity.Player;
 import cam72cam.immersiverailroading.thirdparty.trackapi.ITrack;
 import cam72cam.mod.util.DegreeFuncs;
@@ -27,6 +29,7 @@ public class SpawnUtil {
 	public static ClickResult placeStock(Player player, Player.Hand hand, World worldIn, Vec3i pos, EntityRollingStockDefinition def, List<ItemComponentType> list) {
 		ItemRollingStock.Data data = new ItemRollingStock.Data(player.getHeldItem(hand));
 
+		// todo
 		ITrack initte = ITrack.get(worldIn, new Vec3d(pos).add(0, 0.7, 0), true);
 		if (initte == null) {
 			return ClickResult.REJECTED;
@@ -56,6 +59,8 @@ public class SpawnUtil {
 
 			if (stock instanceof EntityMoveableRollingStock) {
 				EntityMoveableRollingStock moveable = (EntityMoveableRollingStock)stock;
+
+				//todo
 				ITrack centerte = ITrack.get(worldIn, center.getUMCPos(), true);
 				if (centerte != null) {
 					float frontDistance = moveable.getDefinition().getBogeyFront(gauge);
@@ -76,6 +81,7 @@ public class SpawnUtil {
 
 					moveable.setPosition(rear.add(front.subtract(rear).scale(frontDistance / (frontDistance - rearDistance))));
 
+					//todo
 					ITrack frontte = ITrack.get(worldIn, front, true);
 					if (frontte != null) {
 						IRPathingData frontNext = new IRPathingData(front, 0);

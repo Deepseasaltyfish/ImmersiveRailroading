@@ -1,6 +1,5 @@
 package cam72cam.immersiverailroading.render.util;
 
-import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.render.ExpireableMap;
 import cam72cam.immersiverailroading.render.rail.RailRender;
@@ -16,7 +15,6 @@ import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.render.GlobalRender;
 import cam72cam.mod.render.opengl.*;
-import cam72cam.mod.text.PlayerMessage;
 import cam72cam.mod.world.World;
 
 import java.util.ArrayList;
@@ -24,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 import static cam72cam.immersiverailroading.render.util.FlatCurveRenderer.lineImg;
-//todo: 和BezierCurveRenderer合并
+
 public class VolumetricCurveRenderer {
     private static ExpireableMap<String, RailInfo> infoCache = new ExpireableMap<>();
 
@@ -128,6 +126,7 @@ public class VolumetricCurveRenderer {
 
     public static void renderWireFrame(RenderState state, float partialTicks) {
         World world = MinecraftClient.getPlayer().getWorld();
+        Vec3d playerPosition = MinecraftClient.getPlayer().getPosition();
 
         if(WorldData.get(world) == null) return;
 
@@ -136,10 +135,11 @@ public class VolumetricCurveRenderer {
         Map<Long, TrackRegion> regions = WorldData.get(world).regions;
         for(Map.Entry<Long, TrackRegion> region : regions.entrySet()) {
             for(Map.Entry<Vec3i, TrackMultiGeometrySegment> segment : region.getValue().trackBlocks.entrySet()){
+                if(playerPosition.distanceTo(new Vec3d(segment.getValue().getBlockPos())) > 128) continue;
                 for(Map.Entry<Gauge, TrackSingleGeometrySegment> single : segment.getValue().paths.getFirst().entrySet()){
-                    Vec3i blockPos = TrackRegion.toBlockPos(region.getKey(), segment.getKey());
+                    Vec3i blockPos = segment.getValue().getBlockPos();
 
-                    RailInfo info = single.getValue().getAndUpdateBuilder(world, blockPos).info;
+                    RailInfo info = single.getValue().getAndUpdateBuilder(world).info;
 
                     String key = info.uniqueID + info.placementInfo.placementPosition;
                     RailInfo cached = infoCache.get(key);
@@ -157,26 +157,44 @@ public class VolumetricCurveRenderer {
                     renderCurve(single.getValue().pointsCache, Color.LIME, 1 / 16f, currentState.clone().translate(0, 1, 0));
                     renderHandles(single.getValue().baseCurve, Color.MAGENTA, Color.CYAN, Color.RED, 1 / 16f, 1 / 4f, currentState.clone().translate(0, 1 + 1 / 16f, 0));
 
-                    TrackNode node = new TrackNode(single.getValue(), true, world, blockPos);
-                    TrackNode next = node.getConn(world, blockPos, false);
-                    if(next != null) {
-                        List<VecYPR> conn = new ArrayList<>();
-                        conn.add(node.point);
-                        conn.add(next.point);
-                        renderCurve(conn, Color.ORANGE, 1/16f, state.clone().translate(0, 1 + 1/32f, 0));
-                    }
+//                    TrackNode node = new TrackNode(single.getValue(), true, world, blockPos);
+//                    TrackNode next = node.getConn(world, false);
+//                    if(next != null) {
+//                        List<VecYPR> conn = new ArrayList<>();
+//                        conn.add(node.point);
+//                        conn.add(next.point);
+//                        renderCurve(conn, Color.ORANGE, 1/16f, state.clone().translate(0, 1 + 1/32f, 0));
+//                    }
+//
+//                    TrackNode node2 = new TrackNode(single.getValue(), false, world, blockPos);
+//                    TrackNode next2 = node2.getConn(world, true);
+//                    if(next2 != null) {
+//                        List<VecYPR> conn2 = new ArrayList<>();
+//                        conn2.add(node2.point);
+//                        conn2.add(next2.point);
+//                        renderCurve(conn2, Color.ORANGE, 1/16f, state.clone().translate(0, 1 + 1/32f, 0));
+//                    }
 
-                    TrackNode node2 = new TrackNode(single.getValue(), false, world, blockPos);
-                    TrackNode next2 = node2.getConn(world, blockPos, true);
-                    if(next2 != null) {
-                        List<VecYPR> conn2 = new ArrayList<>();
-                        conn2.add(node2.point);
-                        conn2.add(next2.point);
-                        renderCurve(conn2, Color.ORANGE, 1/16f, state.clone().translate(0, 1 + 1/32f, 0));
-                    }
+
 
 //                  renderDebug(info, currentState);
                 }
+            }
+        }
+
+        renderGaps(world, state);
+    }
+
+    public static void renderGaps(World world, RenderState state) {
+        for (TrackEdge trackEdge : WorldData.get(world).edges) {
+            if(trackEdge.edgeType == TrackEdge.EdgeType.GAP) {
+                TrackNode from = WorldData.get(world).nodes.get(trackEdge.from);
+                TrackNode to = WorldData.get(world).nodes.get(trackEdge.to);
+                List<VecYPR> conn = new ArrayList<>();
+                if (from == null || to == null) continue;
+                conn.add(from.point);
+                conn.add(to.point);
+                renderCurve(conn, Color.ORANGE, 1/16f, state.clone().translate(0, 1 + 1/32f, 0));
             }
         }
     }
@@ -224,10 +242,10 @@ public class VolumetricCurveRenderer {
         appendLineQuad(draw, curve.p2, curve.ctrl2, handleColor, width);
 
         // 四个点：p1、ctrl1、ctrl2、p2
-        drawBlockWireFrame(draw, new VecYPR(curve.p1.add(0, -1/32f, 0), 45, 0, 45), pointColor, pointSize, 1/16f);
-        drawBlockWireFrame(draw, new VecYPR(curve.ctrl1.add(0, -1/32f, 0), 45, 0, 45), controlColor, pointSize, 1/16f);
-        drawBlockWireFrame(draw, new VecYPR(curve.ctrl2.add(0, -1/32f, 0), 45, 0, 45), controlColor, pointSize, 1/16f);
-        drawBlockWireFrame(draw, new VecYPR(curve.p2.add(0, -1/32f, 0), 45, 0, 45), pointColor, pointSize, 1/16f);
+        drawBlockWireFrame(draw, new VecYPR(curve.p1.add(0, -1/32f, 0), 45, 0, 0), pointColor, pointSize, 1/16f);
+        drawBlockWireFrame(draw, new VecYPR(curve.ctrl1.add(0, -1/32f, 0), 45, 0, 0), controlColor, pointSize, 1/16f);
+        drawBlockWireFrame(draw, new VecYPR(curve.ctrl2.add(0, -1/32f, 0), 45, 0, 0), controlColor, pointSize, 1/16f);
+        drawBlockWireFrame(draw, new VecYPR(curve.p2.add(0, -1/32f, 0), 45, 0, 0), pointColor, pointSize, 1/16f);
 
         draw.draw(state.clone().texture(Texture.wrap(lineImg))
                 .alpha_test(false)

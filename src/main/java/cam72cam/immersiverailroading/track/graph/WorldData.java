@@ -3,6 +3,7 @@ package cam72cam.immersiverailroading.track.graph;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.net.TrackRegionPacket;
+import cam72cam.immersiverailroading.track.VecYPR;
 import cam72cam.mod.entity.Player;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;
@@ -272,16 +273,16 @@ public class WorldData {
                 TrackSingleGeometrySegment single = entry.getValue();
                 int lastIdx = single.pointsCache.size() - 1;
 
-                // start 节点：自身 yaw 指向 single 内部，离开 single 要用 backward
-                TrackNode startNode = new TrackNode(single, 0, world, absPos);
-                addNode(startNode);
-                searchAndAddGap(startNode, false);
-
                 if (lastIdx > 0) {
+                    // start 节点：自身 yaw 指向 single 内部，离开 single 要用 backward
+                    TrackNode startNode = new TrackNode(single, 0, world, absPos);
+                    addNode(startNode);
+                    searchAndAddGap(single, false);
+
                     // end 节点：自身 yaw 仍指向 single 内部（从 start 到 end 方向），离开 single 要用 forward
                     TrackNode endNode = new TrackNode(single, lastIdx, world, absPos);
                     addNode(endNode);
-                    searchAndAddGap(endNode, true);
+                    searchAndAddGap(single, true);
 
                     // single 内部双向 NORMAL 边
                     addEdge(startNode.id, endNode.id, TrackEdge.EdgeType.NORMAL);
@@ -291,22 +292,76 @@ public class WorldData {
         }
     }
 
-    private void searchAndAddGap(TrackNode node, boolean forward) {
+    private void searchAndAddGap(TrackSingleGeometrySegment single, boolean isNear) {//todo 还没加上point只有1个点的支持，之后加，当然调用方也是
+        int lastIdx = single.pointsCache.size() - 1;
+        if (lastIdx <= 0) return;
+
+        Vec3i absPos = single.getBlockPos();
+
+        TrackNode startNode = new TrackNode(single, 0, world, absPos);
+        TrackNode endNode = new TrackNode(single, lastIdx, world, absPos);
+
+        TrackNode node = isNear ? startNode : endNode;
+        addNode(node);
+
+        // 自身 yaw 指向 single 内部：
+        // start 端离开 single 用 backward，end 端离开 single 用 forward
+        boolean forward = !isNear;
         TrackNode other = node.getConn(world, forward);
         if (other == null || other.id.equals(node.id)) return;
 
         addNode(other);
         addEdge(node.id, other.id, TrackEdge.EdgeType.GAP);
 
-        int lastIdx = other.trackSingleGeometrySegment.pointsCache.size() - 1;
-        if (other.index != 0 && other.index != lastIdx) {
+        int otherLastIdx = other.trackSingleGeometrySegment.pointsCache.size() - 1;
+        if (other.index != 0 && other.index != otherLastIdx) {
             Vec3i otherAbsPos = TrackRegionUtil.toBlockPos(other.id.regionPos, other.id.regionBlockPos);
             TrackNode otherStartNode = new TrackNode(other.trackSingleGeometrySegment, 0, world, otherAbsPos);
-            TrackNode otherEndNode = new TrackNode(other.trackSingleGeometrySegment, lastIdx, world, otherAbsPos);
+            TrackNode otherEndNode = new TrackNode(other.trackSingleGeometrySegment, otherLastIdx, world, otherAbsPos);
+
+            Vec3d gapDir = other.point.subtract(node.point).internal();
+            double gapLen = gapDir.length();
+            if (gapLen < 1e-6) {
+                // gap 两端重合，用 node 所在 single 的端点邻点方向代替
+                List<VecYPR> nodePoints = node.trackSingleGeometrySegment.pointsCache;
+                VecYPR a;
+                VecYPR b;
+                if (isNear) {
+                    a = nodePoints.get(0);
+                    b = nodePoints.get(1);
+                } else {
+                    a = nodePoints.get(nodePoints.size() - 2);
+                    b = nodePoints.get(nodePoints.size() - 1);
+                }
+                gapDir = new Vec3d(b.x - a.x, b.y - a.y, b.z - a.z);
+                gapLen = gapDir.length();
+            }
+
+            List<VecYPR> otherPoints = other.trackSingleGeometrySegment.pointsCache;
+            VecYPR oa = otherPoints.get(other.index);
+            VecYPR ob = otherPoints.get(other.index + 1);
+            Vec3d localDir = new Vec3d(ob.x - oa.x, ob.y - oa.y, ob.z - oa.z);
+
+            if (localDir.length() < 1e-9) {
+                ImmersiveRailroading.error("searchAndAddGap: localDir is zero at other.index=%s, points.size=%s, node=%s, other=%s",
+                        other.index, otherPoints.size(), node.id, other.id);
+                return;
+            }
+
             addNode(otherStartNode);
             addNode(otherEndNode);
-            addEdge(other.id, otherStartNode.id, TrackEdge.EdgeType.NORMAL);
-            addEdge(other.id, otherEndNode.id, TrackEdge.EdgeType.NORMAL);
+
+            if (gapLen < 1e-9) {
+                addEdge(other.id, otherStartNode.id, TrackEdge.EdgeType.NORMAL);
+                return;
+            }
+
+            double cos = localDir.dotProduct(gapDir) / (localDir.length() * gapLen);
+            if (cos > 0) {
+                addEdge(other.id, otherEndNode.id, TrackEdge.EdgeType.NORMAL);
+            } else {
+                addEdge(other.id, otherStartNode.id, TrackEdge.EdgeType.NORMAL);
+            }
         }
     }
 
@@ -439,9 +494,9 @@ public class WorldData {
         }
 
         for (TrackNode n : nearbyEndpoints) {
-            int lastIdx = n.trackSingleGeometrySegment.pointsCache.size() - 1;
-            boolean forward = (n.index == lastIdx);
-            searchAndAddGap(n, forward);
+            TrackSingleGeometrySegment single = n.trackSingleGeometrySegment;
+            boolean isNear = (n.index == 0);
+            searchAndAddGap(single, isNear);
         }
     }
 }

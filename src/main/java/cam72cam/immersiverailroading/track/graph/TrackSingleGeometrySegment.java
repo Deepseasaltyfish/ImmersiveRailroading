@@ -75,6 +75,10 @@ public class TrackSingleGeometrySegment {
 //        int a = 1;
     }
 
+    public Vec3i getBlockPos() {
+        return TrackRegionUtil.toBlockPos(regionPos, regionBlockPos);
+    }
+
     public TrackSingleGeometrySegment(ByteBuffer buffer, World world, long regionPos, Vec3i regionBlockPos) {
         this.regionPos = regionPos;
         this.regionBlockPos = regionBlockPos;

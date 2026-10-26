@@ -27,6 +27,14 @@ public class OffWorldMovementTrack {
             if (!initCurrent(current, world, gauge)) return;
         }
 
+        // table 运动删边后，当前边可能已不存在 → 重新投影
+        {
+            TrackEdge e0 = current.getTopoEdge();
+            if (e0 != null && !data.edges.contains(e0)) {
+                if (!initCurrent(current, world, gauge)) return;
+            }
+        }
+
         double[] posOut = new double[4];
 
         for (int iter = 0; iter < MAX_ITERATIONS && motionDist > EPS; iter++) {
@@ -128,15 +136,32 @@ public class OffWorldMovementTrack {
         }
     }
 
+    // ==================== 端点姿态（TABLE_GAP 用 custom，其余用 node.point） ====================
+
+    private static VecYPR edgeFrom(TrackEdge edge, TrackNode node) {
+        return edge.customFrom != null ? edge.customFrom : node.point;
+    }
+
+    private static VecYPR edgeTo(TrackEdge edge, TrackNode node) {
+        return edge.customTo != null ? edge.customTo : node.point;
+    }
+
+    private static boolean isGapLike(TrackEdge edge) {
+        return edge.edgeType == TrackEdge.EdgeType.GAP
+                || edge.edgeType == TrackEdge.EdgeType.TABLE_GAP;
+    }
+
     // ==================== 边几何 ====================
 
     private static double edgeDistance(TrackEdge edge, TrackNode from, TrackNode to, World world) {
-        if (edge.edgeType == TrackEdge.EdgeType.GAP) {
+        if (isGapLike(edge)) {
             double hFrom = trackHeight(from, world);
             double hTo = trackHeight(to, world);
-            double dx = to.point.x - from.point.x;
-            double dy = (to.point.y + hTo) - (from.point.y + hFrom);
-            double dz = to.point.z - from.point.z;
+            VecYPR fp = edgeFrom(edge, from);
+            VecYPR tp = edgeTo(edge, to);
+            double dx = tp.x - fp.x;
+            double dy = (tp.y + hTo) - (fp.y + hFrom);
+            double dz = tp.z - fp.z;
             return Math.sqrt(dx * dx + dy * dy + dz * dz);
         }
 
@@ -159,19 +184,22 @@ public class OffWorldMovementTrack {
     }
 
     private static void positionAt(TrackEdge edge, TrackNode from, TrackNode to, double t, World world, double[] out) {
-        if (edge.edgeType == TrackEdge.EdgeType.GAP) {
+        if (isGapLike(edge)) {
             double hFrom = trackHeight(from, world);
             double hTo = trackHeight(to, world);
             double h = hFrom * (1 - t) + hTo * t;
 
-            out[0] = from.point.x * (1 - t) + to.point.x * t;
-            out[1] = from.point.y * (1 - t) + to.point.y * t + h;
-            out[2] = from.point.z * (1 - t) + to.point.z * t;
+            VecYPR fp = edgeFrom(edge, from);
+            VecYPR tp = edgeTo(edge, to);
+
+            out[0] = fp.x * (1 - t) + tp.x * t;
+            out[1] = fp.y * (1 - t) + tp.y * t + h;
+            out[2] = fp.z * (1 - t) + tp.z * t;
 
             double fromRollSign = (from.index == 0) ? -1.0 : 1.0;
             double toRollSign = (to.index == 0) ? 1.0 : -1.0;
-            double fromRoll = from.point.getRoll() * fromRollSign;
-            double toRoll = to.point.getRoll() * toRollSign;
+            double fromRoll = fp.getRoll() * fromRollSign;
+            double toRoll = tp.getRoll() * toRollSign;
             out[3] = fromRoll * (1 - t) + toRoll * t;
             return;
         }
@@ -207,12 +235,14 @@ public class OffWorldMovementTrack {
     }
 
     private static Vec3d edgeDirection(TrackEdge edge, TrackNode from, TrackNode to, World world) {
-        if (edge.edgeType == TrackEdge.EdgeType.GAP) {
+        if (isGapLike(edge)) {
             double hFrom = trackHeight(from, world);
             double hTo = trackHeight(to, world);
-            double dx = to.point.x - from.point.x;
-            double dy = (to.point.y + hTo) - (from.point.y + hFrom);
-            double dz = to.point.z - from.point.z;
+            VecYPR fp = edgeFrom(edge, from);
+            VecYPR tp = edgeTo(edge, to);
+            double dx = tp.x - fp.x;
+            double dy = (tp.y + hTo) - (fp.y + hFrom);
+            double dz = tp.z - fp.z;
             double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
             if (len < EPS) return new Vec3d(0, 0, 1);
             return new Vec3d(dx / len, dy / len, dz / len);
@@ -298,7 +328,7 @@ public class OffWorldMovementTrack {
         if (incoming.edgeType == TrackEdge.EdgeType.NORMAL && cameFrom.equals(si.straightEnd)) {
             return pickExternalGapFromHub(cands, incoming, si);
         }
-        if (incoming.edgeType == TrackEdge.EdgeType.GAP) {
+        if (incoming.edgeType == TrackEdge.EdgeType.GAP || incoming.edgeType == TrackEdge.EdgeType.TABLE_GAP) {
             for (WorldData.SwitchInfo.Branch b : si.turns) {
                 if (cameFrom.equals(b.start)) {
                     return pickExternalGapFromHub(cands, incoming, si);
@@ -306,7 +336,7 @@ public class OffWorldMovementTrack {
             }
         }
 
-        int branchIdx = branchIndexFromState(si.segment.switchState);
+        int branchIdx = branchIndexFromState(si.segment.getSwitchState());
         if (branchIdx <= 0) {
             for (TrackEdge e : cands) {
                 if (e.equals(incoming)) continue;
@@ -330,7 +360,7 @@ public class OffWorldMovementTrack {
                                                     WorldData.SwitchInfo si) {
         for (TrackEdge e : cands) {
             if (e.equals(incoming)) continue;
-            if (e.edgeType != TrackEdge.EdgeType.GAP) continue;
+            if (e.edgeType != TrackEdge.EdgeType.GAP && e.edgeType != TrackEdge.EdgeType.TABLE_GAP) continue;
 
             boolean isTie = false;
             for (WorldData.SwitchInfo.Branch b : si.turns) {
@@ -348,7 +378,8 @@ public class OffWorldMovementTrack {
         if (cands == null) return null;
 
         TrackNodeId cameFrom = incoming.to.equals(turnStartId) ? incoming.from : incoming.to;
-        boolean fromTie = incoming.edgeType == TrackEdge.EdgeType.GAP && cameFrom.equals(si.hub);
+        boolean fromTie = (incoming.edgeType == TrackEdge.EdgeType.GAP || incoming.edgeType == TrackEdge.EdgeType.TABLE_GAP)
+                && cameFrom.equals(si.hub);
 
         if (fromTie) {
             for (TrackEdge e : cands) {
@@ -454,21 +485,23 @@ public class OffWorldMovementTrack {
         double maxDist = Math.max(1.0, from.trackSingleGeometrySegment.gauge.value() * 0.5);
         double maxDistSq = maxDist * maxDist;
 
-        if (edge.edgeType == TrackEdge.EdgeType.GAP) {
+        if (isGapLike(edge)) {
             double hFrom = trackHeight(from, world);
             double hTo = trackHeight(to, world);
-            double ay = from.point.y + hFrom;
-            double by = to.point.y + hTo;
-            double ax = to.point.x - from.point.x;
+            VecYPR fp = edgeFrom(edge, from);
+            VecYPR tp = edgeTo(edge, to);
+            double ay = fp.y + hFrom;
+            double by = tp.y + hTo;
+            double ax = tp.x - fp.x;
             double ayy = by - ay;
-            double az = to.point.z - from.point.z;
+            double az = tp.z - fp.z;
             double abLen2 = ax * ax + ayy * ayy + az * az;
             if (abLen2 < EPS) return -1;
-            double t = ((pos.x - from.point.x) * ax + (pos.y - ay) * ayy + (pos.z - from.point.z) * az) / abLen2;
+            double t = ((pos.x - fp.x) * ax + (pos.y - ay) * ayy + (pos.z - fp.z) * az) / abLen2;
             t = Math.max(0, Math.min(1, t));
-            double cx = from.point.x + ax * t - pos.x;
+            double cx = fp.x + ax * t - pos.x;
             double cy = ay + ayy * t - pos.y;
-            double cz = from.point.z + az * t - pos.z;
+            double cz = fp.z + az * t - pos.z;
             if (cx * cx + cy * cy + cz * cz > maxDistSq) return -1;
             return t;
         }

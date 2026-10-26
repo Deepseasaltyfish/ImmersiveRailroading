@@ -2,16 +2,20 @@ package cam72cam.immersiverailroading.render.util;
 
 import cam72cam.immersiverailroading.ConfigGraphics;
 import cam72cam.immersiverailroading.library.Gauge;
+import cam72cam.immersiverailroading.library.TrackItems;
+import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.track.CubicCurve;
 import cam72cam.immersiverailroading.track.VecYPR;
 import cam72cam.immersiverailroading.track.graph.*;
 import cam72cam.immersiverailroading.util.RailInfo;
+import cam72cam.immersiverailroading.util.VecUtil;
 import cam72cam.mod.MinecraftClient;
 import cam72cam.mod.math.Matrix3;
 import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.render.opengl.*;
 import cam72cam.mod.world.World;
+import util.Matrix4;
 
 import java.util.List;
 import java.util.Map;
@@ -43,12 +47,10 @@ public class VolumetricCurveRenderer {
         double maxBlockDist = ConfigGraphics.TrackRenderDistance;
         double maxBlockDistSq = maxBlockDist * maxBlockDist;
 
-        // 玩家当前所在 Region 的坐标
         long currentRegionId = TrackRegionUtil.vecToRegion(new Vec3i(playerPosition));
         int playerRx = TrackRegionUtil.regionX(currentRegionId);
         int playerRz = TrackRegionUtil.regionZ(currentRegionId);
 
-        // 全量遍历所有 Region
         for (Map.Entry<Long, TrackRegion> region : data.regions.entrySet()) {
             for (Map.Entry<Vec3i, TrackMultiGeometrySegment> segmentEntry : region.getValue().trackBlocks.entrySet()) {
                 TrackMultiGeometrySegment segment = segmentEntry.getValue();
@@ -57,6 +59,9 @@ public class VolumetricCurveRenderer {
                 double ddy = playerPosition.y - segmentPos.y;
                 double ddz = playerPosition.z - segmentPos.z;
                 if (ddx * ddx + ddy * ddy + ddz * ddz > maxBlockDistSq) continue;
+
+                // 为转车台创建变换矩阵（绕方块中心旋转 tablePos 度）
+                Matrix4 tableMatrix = createTableMatrix(world, segment, segment.getBlockPos());
 
                 for (Map<Gauge, TrackSingleGeometrySegment> branch : segment.paths) {
                     for (Map.Entry<Gauge, TrackSingleGeometrySegment> singleEntry : branch.entrySet()) {
@@ -72,10 +77,10 @@ public class VolumetricCurveRenderer {
                         appendBlockWireFrame(draw, new VecYPR(wireCenter, 0), Color.YELLOW, 1, 1 / 16f);
 
                         // 2. 曲线（绿色）
-                        appendCurve(draw, single.pointsCache, blockOffset.add(CURVE_Y_OFFSET), Color.LIME, 1 / 16f);
+                        appendCurve(draw, single.pointsCache, blockOffset.add(CURVE_Y_OFFSET), tableMatrix, Color.LIME, 1 / 16f);
 
                         // 3. 控制柄（品红/青色/红色）
-                        appendHandles(draw, single.baseCurve, blockOffset.add(HANDLE_TOP_OFFSET),
+                        appendHandles(draw, single.baseCurve, blockOffset.add(HANDLE_TOP_OFFSET), tableMatrix,
                                 Color.MAGENTA, Color.CYAN, Color.RED, 1 / 16f, 1 / 4f);
                     }
                 }
@@ -107,7 +112,6 @@ public class VolumetricCurveRenderer {
             int rx = TrackRegionUtil.regionX(regionId);
             int rz = TrackRegionUtil.regionZ(regionId);
 
-            // 判断是否在玩家所在 Region 的 16x16 范围内（即 X/Z 各 ±8）
             boolean detailed = Math.abs(rx - playerRx) <= 8 && Math.abs(rz - playerRz) <= 8;
 
             int minX = rx << 9;
@@ -124,6 +128,29 @@ public class VolumetricCurveRenderer {
                     .alpha_test(false)
                     .blend(BLEND_ALPHA));
         }
+    }
+
+    /**
+     * 为转车台创建变换矩阵，绕 tileRail 方块中心旋转 tablePos 度。
+     * 移车台暂不处理（返回 null）。
+     */
+    private static Matrix4 createTableMatrix(World world, TrackMultiGeometrySegment segment, Vec3i blockPos) {
+        if (segment.type != TrackItems.TURNTABLE) {
+            return null;
+        }
+        // 优先读 TileRail.info.tablePos（客户端实时同步值）
+        double tablePos = segment.getTablePos();
+        TileRail tile = world.getBlockEntity(blockPos, TileRail.class);
+        if (tile != null && tile.info != null) {
+            tablePos = tile.info.tablePos;
+        }
+
+        Vec3d center = new Vec3d(blockPos.x + 0.5, blockPos.y + 0.5, blockPos.z + 0.5);
+        Matrix4 mat = new Matrix4();
+        mat.translate(center.x, center.y, center.z);
+        mat.rotate(-Math.toRadians(tablePos), 0, 1, 0);
+        mat.translate(-center.x, -center.y, -center.z);
+        return mat;
     }
 
     // ==================== 私有绘制原语 ====================
@@ -212,25 +239,36 @@ public class VolumetricCurveRenderer {
         draw.vertex(p4).color(r, g, b, a).uv(1, 0);
     }
 
-    private static void appendCurve(DirectDraw draw, List<VecYPR> points, Vec3d offset, Color color, double width) {
+    private static void appendCurve(DirectDraw draw, List<VecYPR> points, Vec3d offset, Matrix4 matrix,
+                                    Color color, double width) {
         if (points == null || points.size() < 2) return;
         for (int i = 0; i < points.size() - 1; i++) {
             VecYPR a = points.get(i);
             VecYPR b = points.get(i + 1);
-            appendLineQuad(draw,
-                    new Vec3d(a.x + offset.x, a.y + offset.y, a.z + offset.z),
-                    new Vec3d(b.x + offset.x, b.y + offset.y, b.z + offset.z),
-                    color, width);
+            Vec3d pa = new Vec3d(a.x + offset.x, a.y + offset.y, a.z + offset.z);
+            Vec3d pb = new Vec3d(b.x + offset.x, b.y + offset.y, b.z + offset.z);
+            if (matrix != null) {
+                pa = matrix.apply(pa);
+                pb = matrix.apply(pb);
+            }
+            appendLineQuad(draw, pa, pb, color, width);
         }
     }
 
-    private static void appendHandles(DirectDraw draw, CubicCurve curve, Vec3d offset,
+    private static void appendHandles(DirectDraw draw, CubicCurve curve, Vec3d offset, Matrix4 matrix,
                                       Color handleColor, Color pointColor, Color controlColor,
                                       double width, double pointSize) {
         Vec3d p1 = curve.p1.add(offset);
         Vec3d ctrl1 = curve.ctrl1.add(offset);
         Vec3d ctrl2 = curve.ctrl2.add(offset);
         Vec3d p2 = curve.p2.add(offset);
+
+        if (matrix != null) {
+            p1 = matrix.apply(p1);
+            ctrl1 = matrix.apply(ctrl1);
+            ctrl2 = matrix.apply(ctrl2);
+            p2 = matrix.apply(p2);
+        }
 
         appendLineQuad(draw, p1, ctrl1, handleColor, width);
         appendLineQuad(draw, p2, ctrl2, handleColor, width);
@@ -262,14 +300,12 @@ public class VolumetricCurveRenderer {
                 {0, 4}, {1, 5}, {2, 6}, {3, 7},
         };
 
-        // 外框全量绘制
         for (int[] e : edges) {
             appendLineQuad(draw, corners[e[0]], corners[e[1]], Color.YELLOW, 1 / 2f);
         }
 
         if (!detailed) return;
 
-        // 网格步长改为 32（512 / 32 = 16，即 16x16 网格）
         final int step = 32;
         double gridWidth = 1 / 16f;
 

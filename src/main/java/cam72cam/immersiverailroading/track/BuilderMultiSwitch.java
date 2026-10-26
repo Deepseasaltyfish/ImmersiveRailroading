@@ -10,7 +10,7 @@ import cam72cam.mod.world.World;
 import java.util.ArrayList;
 import java.util.List;
 
-public class BuilderMultiSwitch extends BuilderBase implements IIterableTrack {//todo
+public class BuilderMultiSwitch extends BuilderBase implements IIterableTrack {//todo 新switch只有岔尖这一个tileRail,几乎不再可能有重叠了，还有的话就要利用复合builder了
 
     private BuilderIterator turnBuilder;
     private BuilderStraight straightBuilder;

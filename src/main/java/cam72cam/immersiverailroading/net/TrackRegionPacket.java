@@ -1,8 +1,6 @@
 package cam72cam.immersiverailroading.net;
 
-import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.track.graph.TrackRegion;
-import cam72cam.immersiverailroading.track.graph.TrackRegionUtil;
 import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.mod.net.Packet;
 import cam72cam.mod.serialization.TagField;

@@ -10,6 +10,7 @@ import cam72cam.mod.entity.Player;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.world.World;
+import util.Matrix4;
 
 import java.io.File;
 import java.io.IOException;
@@ -629,7 +630,13 @@ public class WorldData {
         if (other == null || other.id.equals(node.id)) return;
 
         addNode(other);
-        addEdge(node.id, other.id, TrackEdge.EdgeType.GAP);
+
+        boolean isTableEdge = findTableMulti(single) != null
+                || findTableMulti(other.trackSingleGeometrySegment) != null;
+        TrackEdge.EdgeType gapType = isTableEdge
+                ? TrackEdge.EdgeType.TABLE_GAP
+                : TrackEdge.EdgeType.GAP;
+        addEdge(node.id, other.id, gapType);
 
         int otherLastIdx = other.trackSingleGeometrySegment.pointsCache.size() - 1;
         if (other.index != 0 && other.index != otherLastIdx) {
@@ -704,14 +711,26 @@ public class WorldData {
 
     private void addEdge(TrackNodeId from, TrackNodeId to, TrackEdge.EdgeType type) {
         if (from.equals(to)) return;
-        TrackEdge edge = new TrackEdge(from, to, type);
-        if (!edges.add(edge)) return;
-
-        outgoing.computeIfAbsent(from, k -> new ArrayList<>()).add(edge);
 
         TrackNode fromNode = nodes.get(from);
         TrackNode toNode = nodes.get(to);
         if (fromNode == null || toNode == null) return;
+
+        VecYPR customFrom = null;
+        VecYPR customTo = null;
+        TrackMultiGeometrySegment tf = null;
+        TrackMultiGeometrySegment tt = null;
+        if (type == TrackEdge.EdgeType.TABLE_GAP) {
+            tf = findTableMulti(fromNode.trackSingleGeometrySegment);
+            if (tf != null) customFrom = applyTableTransform(tf, fromNode.point);
+            tt = findTableMulti(toNode.trackSingleGeometrySegment);
+            if (tt != null) customTo = applyTableTransform(tt, toNode.point);
+        }
+
+        TrackEdge edge = new TrackEdge(from, to, type, customFrom, customTo);
+        if (!edges.add(edge)) return;
+
+        outgoing.computeIfAbsent(from, k -> new ArrayList<>()).add(edge);
 
         long toRegion = TrackRegionUtil.vecToRegion(toNode.trackSingleGeometrySegment.parentAbsPos);
         outgoingByToRegion.computeIfAbsent(toRegion, k -> new HashSet<>()).add(from);
@@ -720,7 +739,7 @@ public class WorldData {
         edge.coveringRegions.add(TrackRegionUtil.vecToRegion(fromSeg.absPos));
         edge.coveringRegions.add(TrackRegionUtil.vecToRegion(fromSeg.parentAbsPos));
 
-        if (type == TrackEdge.EdgeType.GAP) {
+        if (type == TrackEdge.EdgeType.GAP || type == TrackEdge.EdgeType.TABLE_GAP) {
             TrackSingleGeometrySegment toSeg = toNode.trackSingleGeometrySegment;
             edge.coveringRegions.add(TrackRegionUtil.vecToRegion(toSeg.absPos));
             edge.coveringRegions.add(TrackRegionUtil.vecToRegion(toSeg.parentAbsPos));
@@ -729,6 +748,9 @@ public class WorldData {
         for (long r : edge.coveringRegions) {
             edgesByRegion.computeIfAbsent(r, k -> new HashSet<>()).add(edge);
         }
+
+        if (tf != null) tf.updateTablePos(tf.getTablePos(), true);
+        if (tt != null) tt.updateTablePos(tt.getTablePos(), true);
     }
 
     protected void removeEdge(TrackEdge edge) {
@@ -742,7 +764,6 @@ public class WorldData {
             long toRegion = TrackRegionUtil.vecToRegion(toNode.trackSingleGeometrySegment.parentAbsPos);
             Set<TrackNodeId> set = outgoingByToRegion.get(toRegion);
             if (set != null) {
-                // 只有该 from 不再有边指向 toRegion 时才移除
                 List<TrackEdge> fromList = outgoing.get(edge.from);
                 boolean stillHas = false;
                 if (fromList != null) {
@@ -767,6 +788,22 @@ public class WorldData {
             if (set != null) set.remove(edge);
         }
         edge.coveringRegions.clear();
+
+        if (edge.edgeType == TrackEdge.EdgeType.TABLE_GAP) {
+            TrackNode fromNode = nodes.get(edge.from);
+            if (fromNode != null) {
+                TrackMultiGeometrySegment tf = findTableMulti(fromNode.trackSingleGeometrySegment);
+                if (tf != null && !hasTableGaps(tf)) {
+                    tf.updateTablePos(tf.getTablePos(), false);
+                }
+            }
+            if (toNode != null) {
+                TrackMultiGeometrySegment tt = findTableMulti(toNode.trackSingleGeometrySegment);
+                if (tt != null && !hasTableGaps(tt)) {
+                    tt.updateTablePos(tt.getTablePos(), false);
+                }
+            }
+        }
     }
 
     private void removeSwitchesInRegion(long regionId, Vec3i relBlockPosOrNull) {
@@ -988,5 +1025,64 @@ public class WorldData {
         for (Map.Entry<Vec3i, TrackMultiGeometrySegment> e : region.trackBlocks.entrySet()) {
             researchNeighbors(region.toBlockPos(e.getKey()));
         }
+    }
+
+    // ==================== Table 动态连接 ====================
+
+    public TrackMultiGeometrySegment findTableMulti(TrackSingleGeometrySegment single) {
+        if (single == null) return null;
+        TrackMultiGeometrySegment seg = getTrackBlock(single.parentAbsPos);
+        if (seg == null) return null;
+        if (seg.type != TrackItems.TURNTABLE && seg.type != TrackItems.TRANSFERTABLE) return null;
+        return seg;
+    }
+
+    public VecYPR applyTableTransform(TrackMultiGeometrySegment seg, VecYPR p) {
+        if (seg.type != TrackItems.TURNTABLE) return p;
+        Vec3d center = new Vec3d(seg.getBlockPos()).add(0.5, 0.5, 0.5);
+        Matrix4 mat = new Matrix4();
+        mat.translate(center.x, center.y, center.z);
+        mat.rotate(Math.toRadians(-seg.getTablePos()), 0, 1, 0);
+        mat.translate(-center.x, -center.y, -center.z);
+        Vec3d np = mat.apply(new Vec3d(p.x, p.y, p.z));
+        float newYaw = p.getYaw() - (float) seg.getTablePos();
+        return new VecYPR(np, newYaw, p.getPitch(), p.getRoll());
+    }
+
+    public void buildTableGaps(TrackMultiGeometrySegment seg) {
+        if (seg.type != TrackItems.TURNTABLE && seg.type != TrackItems.TRANSFERTABLE) return;
+        for (Map<Gauge, TrackSingleGeometrySegment> branch : seg.paths) {
+            for (TrackSingleGeometrySegment single : branch.values()) {
+                int lastIdx = single.pointsCache.size() - 1;
+                if (lastIdx <= 0) continue;
+                searchAndAddGap(single, true);
+                searchAndAddGap(single, false);
+            }
+        }
+    }
+
+    public void removeTableGaps(TrackMultiGeometrySegment seg) {
+        Set<TrackEdge> toRemove = new HashSet<>();
+        for (TrackEdge edge : edges) {
+            if (edge.edgeType != TrackEdge.EdgeType.TABLE_GAP) continue;
+            TrackNode fromNode = nodes.get(edge.from);
+            TrackNode toNode = nodes.get(edge.to);
+            boolean involvesSeg = false;
+            if (fromNode != null && fromNode.trackSingleGeometrySegment.parentAbsPos.equals(seg.getBlockPos())) involvesSeg = true;
+            if (toNode != null && toNode.trackSingleGeometrySegment.parentAbsPos.equals(seg.getBlockPos())) involvesSeg = true;
+            if (involvesSeg) toRemove.add(edge);
+        }
+        for (TrackEdge edge : toRemove) removeEdge(edge);
+    }
+
+    private boolean hasTableGaps(TrackMultiGeometrySegment seg) {
+        for (TrackEdge edge : edges) {
+            if (edge.edgeType != TrackEdge.EdgeType.TABLE_GAP) continue;
+            TrackNode fromNode = nodes.get(edge.from);
+            TrackNode toNode = nodes.get(edge.to);
+            if (fromNode != null && fromNode.trackSingleGeometrySegment.parentAbsPos.equals(seg.getBlockPos())) return true;
+            if (toNode != null && toNode.trackSingleGeometrySegment.parentAbsPos.equals(seg.getBlockPos())) return true;
+        }
+        return false;
     }
 }

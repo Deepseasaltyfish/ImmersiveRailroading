@@ -61,7 +61,14 @@ public class TrackSingleGeometrySegment {
         } else if(trackBlock.info.settings.type == TrackItems.SWITCH && switchIndex == 1) {
             builder = (BuilderCubicCurve) trackBlock.subInfos.get(0).getBuilder(world, trackBlock.subInfoPos.get(0));
         } else if(trackBlock.info.settings.type == TrackItems.TURNTABLE) {
-            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, trackBlock.getPos());
+            builder = (BuilderCubicCurve) trackBlock.info.withSettings(
+                    mutable -> {
+                        mutable.type = TrackItems.STRAIGHT;
+                        mutable.length = mutable.length * 2 + 1;
+                    }
+            ).with(mutable -> {
+                mutable.placementInfo = mutable.placementInfo.withYaw(VecUtil.toWrongYaw(mutable.placementInfo.facing().getAngle()) + 180);
+            }).getBuilder(world, trackBlock.getPos());
         } else if(trackBlock.info.settings.type == TrackItems.TRANSFERTABLE) {
             builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, trackBlock.getPos());
         } else{ // common way and legacy switch non-straight way
@@ -69,7 +76,11 @@ public class TrackSingleGeometrySegment {
         }
 
         this.yaw = builder.info.placementInfo.yaw;
-        this.placementPosition = builder.info.placementInfo.placementPosition;
+        if (trackBlock.info.settings.type == TrackItems.TURNTABLE) {
+            this.placementPosition = builder.info.placementInfo.placementPosition.add(0, 1, 0);
+        } else {
+            this.placementPosition = builder.info.placementInfo.placementPosition;
+        }
         this.baseCurve = builder.getCurve();
         this.rollAndOffsetInfo = builder.info.settings.rollAndOffsetInfo;
         this.referenceTrack = builder.info.settings.track;

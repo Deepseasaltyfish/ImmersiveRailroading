@@ -35,6 +35,16 @@ public class TileRail extends TileRailBase {
 	@TagField(value = "subInfoPos", mapper = Vec3iListMapper.class)
 	public List<Vec3i> subInfoPos;
 
+	//todo multi gauges support
+//	@TagField("subGaugeInfo")
+//	public RailInfo subGaugeInfo;
+//
+//	@TagField(value = "subGaugeInfos", mapper = RailInfo.subInfosMapper.class)
+//	public List<RailInfo> subGaugeInfos;
+//
+//	@TagField(value = "subGaugeInfoPos", mapper = Vec3iListMapper.class)
+//	public List<Vec3i> subGaugeInfoPos;
+
 	@TagField("buildTimeMs")
 	private long buildTimeMs;
 
@@ -145,7 +155,6 @@ public class TileRail extends TileRailBase {
 					if (Math.abs(desiredPosition - info.tablePos) < speed) {
 						info = info.with(b -> b.tablePos = desiredPosition);
 					} else {
-						// Again, this math is horrific and is probably wayyyyy overcomplicated
 						double dp = MathUtil.deltaAngle(info.tablePos + speed, desiredPosition);
 						double dn = MathUtil.deltaAngle(info.tablePos - speed, desiredPosition);
 						dp = MathUtil.deltaAngle(0, dp + 360);
@@ -169,6 +178,25 @@ public class TileRail extends TileRailBase {
 					shouldUpdate = true;
 				}
 			}
+
+			// 新增：每 tick 同步 seg.tablePos，并根据 shouldUpdate 做 TABLE_GAP 建删
+			TrackMultiGeometrySegment seg = WorldData.get(getWorld()).getTrackBlock(getParentWithoutDamage());
+			if (seg != null) {
+				boolean connected = seg.isTableConnected();
+				if (shouldUpdate) {
+					if (connected) {
+						WorldData.get(getWorld()).removeTableGaps(seg);
+						connected = false;
+					}
+				} else {
+					if (!connected) {
+						WorldData.get(getWorld()).buildTableGaps(seg);
+						connected = true;
+					}
+				}
+				seg.updateTablePos(info.tablePos, connected);
+			}
+
 			if(shouldUpdate){
 				this.markDirty();
 				int maxRange = Math.max(info.settings.length, info.settings.transfertableEntrySpacing * info.settings.transfertableEntryCount);

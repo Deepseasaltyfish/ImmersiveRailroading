@@ -52,16 +52,22 @@ public class TrackNode {
         final double maxAngleRad = Math.toRadians(30);
         final double cosCone = Math.cos(maxAngleRad);
 
+        // ✅ 新增：this 若是 table 端点，用变换后的位置和朝向
+        TrackMultiGeometrySegment thisTable = data.findTableMulti(trackSingleGeometrySegment);
+        VecYPR origin = thisTable != null ? data.applyTableTransform(thisTable, this.point) : this.point;
+
         // A 节点的搜索方向（向前或向后）
-        Vec3d forwardVec = forwardVector(this.point);
+        Vec3d forwardVec = forwardVector(origin);
         Vec3d searchVec = forward ? forwardVec : forwardVec.scale(-1);
 
         Vec3i selfBlock = TrackRegionUtil.toBlockPos(regionPos, regionBlockPos);
+        // ✅ 新增：扫描中心用变换后位置
+        Vec3i scanCenter = new Vec3i(origin);
 
         for (int x = -hori; x <= hori; x++) {
             for (int y = -vert; y <= vert; y++) {
                 for (int z = -hori; z <= hori; z++) {
-                    Vec3i scan = new Vec3i(this.point).add(x, y, z);
+                    Vec3i scan = scanCenter.add(x, y, z);
                     List<Vec3i> parents = data.getParentsAt(scan);
                     if (parents == null) continue;
 
@@ -78,6 +84,8 @@ public class TrackNode {
                         for (Map<Gauge, TrackSingleGeometrySegment> branch : trackBlock.paths) {
                             for (Map.Entry<Gauge, TrackSingleGeometrySegment> single : branch.entrySet()) {
                                 TrackSingleGeometrySegment seg = single.getValue();
+                                // ✅ 新增：候选段若是 table，需要应用变换
+                                TrackMultiGeometrySegment candTable = data.findTableMulti(seg);
                                 List<VecYPR> points = seg.pointsCache;
                                 double maxDist = seg.gauge.value();
                                 int lastIdx = points.size() - 1;
@@ -87,8 +95,13 @@ public class TrackNode {
                                             .add(new Vec3d(seg.getBlockPos()))
                                             .add(seg.getAndUpdateBuilder(world).info.placementInfo.placementPosition);
 
+                                    // ✅ 新增：候选是 table 端点，用变换后位置
+                                    if (candTable != null) {
+                                        cand = data.applyTableTransform(candTable, cand);
+                                    }
+
                                     // 1. 距离门槛过滤（仅作为硬拦截）
-                                    double d = cand.distanceTo(this.point);
+                                    double d = cand.distanceTo(origin);
                                     if (d >= maxDist) continue;
 
                                     // 2. 重合节点直接返回（排除自己）
@@ -101,9 +114,9 @@ public class TrackNode {
 
                                     // 3. 计算两点连线方向
                                     Vec3d offset = new Vec3d(
-                                            cand.x - this.point.x,
-                                            cand.y - this.point.y,
-                                            cand.z - this.point.z
+                                            cand.x - origin.x,
+                                            cand.y - origin.y,
+                                            cand.z - origin.z
                                     );
                                     double dist = offset.length();
                                     Vec3d lineDir = offset.scale(1.0 / dist);
@@ -131,9 +144,7 @@ public class TrackNode {
                                     double angleB = Math.acos(Math.max(-1.0, Math.min(1.0, dotLineB)));
 
                                     // 6. 综合评分
-                                    // 姿态偏差（主项）
                                     double angleScore = angleA + angleB;
-                                    // 距离归一化，乘以微小系数，作为平局决胜项（0.05 rad ≈ 2.87°）
                                     double distNorm = d / maxDist;
                                     double finalScore = angleScore + distNorm * 0.05;
 

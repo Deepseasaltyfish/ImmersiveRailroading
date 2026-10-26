@@ -14,14 +14,16 @@ import java.util.List;
 import java.util.Map;
 
 public class TrackMultiGeometrySegment {
-    private final long regionPos;// addition, not necessary
-    private final Vec3i regionBlockPos;// addition, not necessary
+    private final long regionPos;
+    private final Vec3i regionBlockPos;
 
     private final long buildTime;
     public final List<Map<Gauge, TrackSingleGeometrySegment>> paths;
-    protected int switchState;
+    private int switchState;
+    private double tablePos;
+    private boolean tableConnected; // 纯运行时状态，不序列化
 
-    public final TrackItems type; // for table and switch
+    public final TrackItems type;
 
     private List<Vec3i> cachedPositions;
 
@@ -50,37 +52,56 @@ public class TrackMultiGeometrySegment {
 
         type = trackBlock.info.settings.type;
         switchState = trackBlock.info.switchState.ordinal();
+        tablePos = trackBlock.info.tablePos;
+        tableConnected = false;
+    }
+
+    public int getSwitchState() {
+        return switchState;
     }
 
     public void updateSwitchSate(SwitchState switchState) {
         this.switchState = switchState.ordinal();
     }
 
-    public void updateTableState() {
-        //todo
+    public double getTablePos() {
+        return tablePos;
+    }
+
+    public boolean isTableConnected() {
+        return tableConnected;
+    }
+
+    public void updateTablePos(double tablePos, boolean tableConnected) {
+        this.tablePos = tablePos;
+        this.tableConnected = tableConnected;
     }
 
     public TrackMultiGeometrySegment(ByteBuffer buffer, World world, long regionPos, Vec3i regionBlockPos) {
         this.regionPos = regionPos;
         this.regionBlockPos = regionBlockPos;
 
-        int version = buffer.getInt(); // version
+        int version = buffer.getInt();
         if (version != 1) {
             throw new RuntimeException(String.format("Invalid multi track geometry segment data version %d", version));
         }
 
-        buildTime = buffer.getLong(); // buildTime
-        switchState = buffer.getInt(); // switch state
-        type = TrackItems.byOrder(buffer.getInt()); // type
+        buildTime = buffer.getLong();
+        switchState = buffer.getInt();
+        tablePos = buffer.getDouble();
+        type = TrackItems.byOrder(buffer.getInt());
+
+        // 运行时状态：反序列化后默认未连接，首帧 TileRail.update 会自动重建 TABLE_GAP
+        tableConnected = false;
 
         paths = new ArrayList<>();
-        int branchCount = buffer.getInt(); // branch count
+        int branchCount = buffer.getInt();
         for(int i = 0; i < branchCount; i ++) {
-            int segmentCount = buffer.getInt(); // segment count
+            int segmentCount = buffer.getInt();
             Map<Gauge, TrackSingleGeometrySegment> branch = new HashMap<>();
             for(int j = 0; j < segmentCount; j++) {
-                Gauge gauge = Gauge.from(buffer.getDouble()); // segment gauge
-                branch.put(gauge, new TrackSingleGeometrySegment(buffer, world)); // single segment
+                Gauge gauge = Gauge.from(buffer.getDouble());
+                branch.put(gauge, new TrackSingleGeometrySegment(buffer, world));
             }
             paths.add(branch);
         }
@@ -89,18 +110,19 @@ public class TrackMultiGeometrySegment {
     public int sizeBytes() {
         int bytes = 0;
 
-        bytes += Integer.BYTES; // version
-        bytes += Long.BYTES; // buildTime
-        bytes += Integer.BYTES; // switch state
-        bytes += Integer.BYTES; // type
+        bytes += Integer.BYTES;    // version
+        bytes += Long.BYTES;       // buildTime
+        bytes += Integer.BYTES;    // switchState
+        bytes += Double.BYTES;     // tablePos
+        bytes += Integer.BYTES;    // type
 
-        bytes += Integer.BYTES; // branch count
+        bytes += Integer.BYTES;    // branch count
         for(int i = 0; i < paths.size(); i ++) {
             Map<Gauge, TrackSingleGeometrySegment> branch = paths.get(i);
             bytes += Integer.BYTES; // segment count
             for(Map.Entry<Gauge, TrackSingleGeometrySegment> entry : branch.entrySet()) {
-                bytes += Double.BYTES; // segment gauge
-                bytes += entry.getValue().sizeBytes(); // single segment
+                bytes += Double.BYTES;
+                bytes += entry.getValue().sizeBytes();
             }
         }
 
@@ -108,18 +130,19 @@ public class TrackMultiGeometrySegment {
     }
 
     public void write(ByteBuffer buffer) {
-        buffer.putInt(1); // version
-        buffer.putLong(buildTime); // buildTime
-        buffer.putInt(switchState); // switch state
+        buffer.putInt(1);            // version
+        buffer.putLong(buildTime);   // buildTime
+        buffer.putInt(switchState);  // switchState
+        buffer.putDouble(tablePos);  // tablePos
         buffer.putInt(type.getOrder()); // type
 
-        buffer.putInt(paths.size()); // branch count
+        buffer.putInt(paths.size());
         for(int i = 0; i < paths.size(); i ++) {
             Map<Gauge, TrackSingleGeometrySegment> branch = paths.get(i);
-            buffer.putInt(branch.size()); // segment count
+            buffer.putInt(branch.size());
             for(Map.Entry<Gauge, TrackSingleGeometrySegment> entry : branch.entrySet()) {
-                buffer.putDouble(entry.getKey().value()); // segment gauge
-                entry.getValue().write(buffer); // single segment
+                buffer.putDouble(entry.getKey().value());
+                entry.getValue().write(buffer);
             }
         }
     }

@@ -637,6 +637,9 @@ public class WorldData {
                 ? TrackEdge.EdgeType.TABLE_GAP
                 : TrackEdge.EdgeType.GAP;
         addEdge(node.id, other.id, gapType);
+        if (gapType == TrackEdge.EdgeType.TABLE_GAP) {
+            addEdge(other.id, node.id, gapType);
+        }
 
         int otherLastIdx = other.trackSingleGeometrySegment.pointsCache.size() - 1;
         if (other.index != 0 && other.index != otherLastIdx) {
@@ -1039,13 +1042,41 @@ public class WorldData {
 
     public VecYPR applyTableTransform(TrackMultiGeometrySegment seg, VecYPR p) {
         if (seg.type != TrackItems.TURNTABLE) return p;
-        Vec3d center = new Vec3d(seg.getBlockPos()).add(0.5, 0.5, 0.5);
+
+        TrackSingleGeometrySegment single = null;
+        for (Map<Gauge, TrackSingleGeometrySegment> branch : seg.paths) {
+            for (TrackSingleGeometrySegment s : branch.values()) {
+                single = s;
+                break;
+            }
+            if (single != null) break;
+        }
+        if (single == null) return p;
+
+        List<VecYPR> pts = single.pointsCache;
+        if (pts.size() < 2) return p;
+
+        // 世界坐标下的曲线首尾
+        Vec3d base = new Vec3d(single.getBlockPos()).add(single.placementPosition);
+        VecYPR first = pts.get(0);
+        VecYPR last = pts.get(pts.size() - 1);
+
+        // tableCenter = 曲线中点
+        Vec3d center = new Vec3d(
+                base.x + (first.x + last.x) * 0.5,
+                base.y + (first.y + last.y) * 0.5,
+                base.z + (first.z + last.z) * 0.5
+        );
+
+        double tablePos = seg.getTablePos();
+
         Matrix4 mat = new Matrix4();
         mat.translate(center.x, center.y, center.z);
-        mat.rotate(Math.toRadians(-seg.getTablePos()), 0, 1, 0);
+        mat.rotate(Math.toRadians(-tablePos), 0, 1, 0);
         mat.translate(-center.x, -center.y, -center.z);
+
         Vec3d np = mat.apply(new Vec3d(p.x, p.y, p.z));
-        float newYaw = p.getYaw() - (float) seg.getTablePos();
+        float newYaw = p.getYaw() - (float) tablePos;
         return new VecYPR(np, newYaw, p.getPitch(), p.getRoll());
     }
 

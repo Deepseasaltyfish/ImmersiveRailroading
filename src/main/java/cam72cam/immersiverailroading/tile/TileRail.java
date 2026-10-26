@@ -182,19 +182,20 @@ public class TileRail extends TileRailBase {
 			// 新增：每 tick 同步 seg.tablePos，并根据 shouldUpdate 做 TABLE_GAP 建删
 			TrackMultiGeometrySegment seg = WorldData.get(getWorld()).getTrackBlock(getParentWithoutDamage());
 			if (seg != null) {
+				seg.updateTablePos(info.tablePos, seg.isTableConnected());
+			}
+
+			if (seg != null) {
 				boolean connected = seg.isTableConnected();
 				if (shouldUpdate) {
 					if (connected) {
 						WorldData.get(getWorld()).removeTableGaps(seg);
-						connected = false;
-					}
+                    }
 				} else {
 					if (!connected) {
 						WorldData.get(getWorld()).buildTableGaps(seg);
-						connected = true;
-					}
+                    }
 				}
-				seg.updateTablePos(info.tablePos, connected);
 			}
 
 			if(shouldUpdate){

@@ -11,8 +11,7 @@ import cam72cam.immersiverailroading.library.TrackItems;
 import cam72cam.immersiverailroading.physics.MovementTrack;
 import cam72cam.immersiverailroading.thirdparty.trackapi.ITrack;
 import cam72cam.immersiverailroading.tile.TileRailBase;
-import cam72cam.immersiverailroading.track.graph.OffWorldMovementTrack;
-import cam72cam.immersiverailroading.track.graph.TrackEdge;
+import cam72cam.immersiverailroading.track.graph.*;
 import cam72cam.immersiverailroading.util.BlockUtil;
 import cam72cam.immersiverailroading.thirdparty.trackapi.IRPathingData;
 import cam72cam.immersiverailroading.util.Speed;
@@ -412,6 +411,35 @@ public class SimulationState {
             Vec3d nextFrontPos = nextFront.getTopoPos();
             Vec3d nextRearPos = nextRear.getTopoPos();
 
+            // table 旋转期间，getTopoPos() 实时计算，before/after 同帧相等，
+            // 必须靠 "当前 edge 属于正在运动的 table" 触发位置更新
+            boolean frontTableMoving = isOnMovingTable(nextFront.getTopoEdge());
+            boolean rearTableMoving  = isOnMovingTable(nextRear.getTopoEdge());
+
+            if (!nextFrontPos.equals(topoBeforeFront) || !nextRearPos.equals(topoBeforeRear)
+                    || frontTableMoving || rearTableMoving) {
+                Vec3d frontDelta = nextFrontPos.subtract(topoBeforeFront);
+                Vec3d rearDelta  = nextRearPos.subtract(topoBeforeRear);
+                if (frontDelta.lengthSquared() > 1e-10) {
+                    yawFront = VecUtil.toWrongYaw(frontDelta);
+                }
+                if (rearDelta.lengthSquared() > 1e-10) {
+                    yawRear = VecUtil.toWrongYaw(rearDelta);
+                }
+                rollFront = (float) -nextFront.getRoll();
+                rollRear  = (float) -nextRear.getRoll();
+
+                Vec3d deltaCenter = nextFrontPos.subtract(position).scale(config.offsetRear)
+                        .subtract(nextRearPos.subtract(position).scale(config.offsetFront))
+                        .scale(-1/(config.offsetFront-config.offsetRear));
+
+                Vec3d bogeyDelta = nextFrontPos.subtract(nextRearPos);
+                yaw = VecUtil.toWrongYaw(bogeyDelta);
+                roll = (float) Simulation.calculateRoll(rollFront, rollRear);
+                pitch = (float) Math.toDegrees(FastMath.atan2(bogeyDelta.y, nextRearPos.distanceTo(nextFrontPos)));
+                position = position.add(deltaCenter);
+            }
+
             if (!nextFrontPos.equals(topoBeforeFront) || !nextRearPos.equals(topoBeforeRear)) {
                 yawFront = VecUtil.toWrongYaw(nextFrontPos.subtract(topoBeforeFront));
                 yawRear = VecUtil.toWrongYaw(nextRearPos.subtract(topoBeforeRear));
@@ -559,5 +587,19 @@ public class SimulationState {
         return base != null
                 && base.getParentTile() != null
                 && base.getParentTile().info.settings.type == type;
+    }
+
+    private boolean isOnMovingTable(TrackEdge edge) {
+        if (edge == null) return false;
+        World world = config.world;
+        if (world == null) return false;
+        WorldData data = WorldData.get(world);
+        if (data == null) return false;
+        TrackNode from = data.nodes.get(edge.from);
+        TrackNode to = data.nodes.get(edge.to);
+        if (from == null || to == null) return false;
+        TrackMultiGeometrySegment table = data.findTableMulti(from.trackSingleGeometrySegment);
+        if (table == null) table = data.findTableMulti(to.trackSingleGeometrySegment);
+        return table != null && !table.isTableConnected();
     }
 }

@@ -21,7 +21,33 @@ public class OffWorldMovementTrack {
         if (data == null) return;
 
         double motionDist = motion.length();
-        if (motionDist < EPS) return;
+        if (motionDist < EPS) {
+            TrackEdge edge = current.getTopoEdge();
+            if (edge == null) {
+                // 从非 off 切换过来：先投影建立 edge/t
+                initCurrent(current, world, gauge);
+                return;
+            }
+            // 车在 table 上时，即使速度 0 也同步 edge/t/roll
+            // （getTopoPos 实时反映 tablePos，位置本身不需要 advanceTo，
+            //  但 roll 可能因 table 旋转而变化，需要通过 advanceTo(edge,t,roll) 刷新）
+            TrackNode from = data.nodes.get(edge.from);
+            TrackNode to = data.nodes.get(edge.to);
+            if (from != null && to != null) {
+                TrackMultiGeometrySegment table = tableOf(data, from);
+                if (table == null) table = tableOf(data, to);
+                if (table != null) {
+                    double t = current.getTopoT();
+                    if (t < 0) t = 0;
+                    if (t > 1) t = 1;
+                    double[] out = new double[4];
+                    positionAt(edge, from, to, t, world, out);
+                    current.advanceTo(edge, t, out[3]);
+                    current.advanceTo(new Vec3d(out[0], out[1], out[2]), out[3]);
+                }
+            }
+            return;
+        }
 
         if (current.getTopoEdge() == null) {
             if (!initCurrent(current, world, gauge)) return;
@@ -136,7 +162,7 @@ public class OffWorldMovementTrack {
         }
     }
 
-    // ==================== 端点姿态（TABLE_GAP 用 custom，其余用 node.point） ====================
+    // ==================== 端点姿态 ====================
 
     private static VecYPR edgeFrom(TrackEdge edge, TrackNode node) {
         return edge.customFrom != null ? edge.customFrom : node.point;
@@ -149,6 +175,23 @@ public class OffWorldMovementTrack {
     private static boolean isGapLike(TrackEdge edge) {
         return edge.edgeType == TrackEdge.EdgeType.GAP
                 || edge.edgeType == TrackEdge.EdgeType.TABLE_GAP;
+    }
+
+    /**
+     * 若节点属于 table，取 table 的 multi；否则返回 null。
+     */
+    private static TrackMultiGeometrySegment tableOf(WorldData data, TrackNode node) {
+        if (data == null || node == null) return null;
+        return data.findTableMulti(node.trackSingleGeometrySegment);
+    }
+
+    /**
+     * 对 table 上的点应用实时旋转（Vec3d 是 VecYPR 父类，用 VecYPR 传位置即可）。
+     */
+    private static Vec3d rotateIfTable(WorldData data, TrackMultiGeometrySegment table, double x, double y, double z) {
+        if (table == null) return new Vec3d(x, y, z);
+        VecYPR r = data.applyTableTransform(table, new VecYPR(new Vec3d(x, y, z), 0f, 0f, 0f));
+        return new Vec3d(r.x, r.y, r.z);
     }
 
     // ==================== 边几何 ====================
@@ -165,6 +208,7 @@ public class OffWorldMovementTrack {
             return Math.sqrt(dx * dx + dy * dy + dz * dz);
         }
 
+        // NORMAL：table 旋转不改变曲线长度，直接算 pointsCache 相邻距离
         List<VecYPR> points = from.trackSingleGeometrySegment.pointsCache;
         int fi = from.index;
         int ti = to.index;
@@ -215,18 +259,31 @@ public class OffWorldMovementTrack {
         Vec3d offset = singleOffset(from, world);
         VecYPR a = points.get(i);
         double rawRoll;
+        double wx, wy, wz;
         if (frac < EPS || i >= lastIdx) {
-            out[0] = a.x + offset.x;
-            out[1] = a.y + offset.y;
-            out[2] = a.z + offset.z;
+            wx = a.x + offset.x;
+            wy = a.y + offset.y;
+            wz = a.z + offset.z;
             rawRoll = a.getRoll();
         } else {
             VecYPR b = points.get(i + 1);
-            out[0] = a.x + (b.x - a.x) * frac + offset.x;
-            out[1] = a.y + (b.y - a.y) * frac + offset.y;
-            out[2] = a.z + (b.z - a.z) * frac + offset.z;
+            wx = a.x + (b.x - a.x) * frac + offset.x;
+            wy = a.y + (b.y - a.y) * frac + offset.y;
+            wz = a.z + (b.z - a.z) * frac + offset.z;
             rawRoll = a.getRoll() + (b.getRoll() - a.getRoll()) * frac;
         }
+
+        // ✅ turntable 的 NORMAL 边：应用实时旋转
+        WorldData data = WorldData.get(world);
+        TrackMultiGeometrySegment table = tableOf(data, from);
+        if (table != null) {
+            Vec3d r = rotateIfTable(data, table, wx, wy, wz);
+            wx = r.x; wy = r.y; wz = r.z;
+        }
+
+        out[0] = wx;
+        out[1] = wy;
+        out[2] = wz;
 
         if (to.index < from.index) {
             rawRoll = -rawRoll;
@@ -257,11 +314,26 @@ public class OffWorldMovementTrack {
         if (fi < 0 || fi >= points.size() || adj < 0 || adj >= points.size()) {
             return new Vec3d(0, 0, 1);
         }
+
+        Vec3d offset = singleOffset(from, world);
         VecYPR a = points.get(fi);
         VecYPR b = points.get(adj);
-        double dx = b.x - a.x;
-        double dy = b.y - a.y;
-        double dz = b.z - a.z;
+        double ax = a.x + offset.x, ay = a.y + offset.y, az = a.z + offset.z;
+        double bx = b.x + offset.x, by = b.y + offset.y, bz = b.z + offset.z;
+
+        // ✅ turntable 的 NORMAL 边：方向也随实时旋转
+        WorldData data = WorldData.get(world);
+        TrackMultiGeometrySegment table = tableOf(data, from);
+        if (table != null) {
+            Vec3d ra = rotateIfTable(data, table, ax, ay, az);
+            Vec3d rb = rotateIfTable(data, table, bx, by, bz);
+            ax = ra.x; ay = ra.y; az = ra.z;
+            bx = rb.x; by = rb.y; bz = rb.z;
+        }
+
+        double dx = bx - ax;
+        double dy = by - ay;
+        double dz = bz - az;
         double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (len < EPS) return new Vec3d(0, 0, 1);
         return new Vec3d(dx / len, dy / len, dz / len);
@@ -418,7 +490,6 @@ public class OffWorldMovementTrack {
         Vec3i posBlock = new Vec3i(pos);
         Set<TrackEdge> candidates = new HashSet<>();
 
-        // 收集 pos 附近所有方块涉及的 region
         Set<Long> regionsToCheck = new HashSet<>();
         for (int x = -hori; x <= hori; x++) {
             for (int y = -vert; y <= vert; y++) {
@@ -517,6 +588,9 @@ public class OffWorldMovementTrack {
         int hi = Math.min(lastIdx, Math.max(fi, ti));
         if (lo >= hi) return -1;
 
+        // ✅ turntable 的 NORMAL 边：每个候选点应用实时旋转后再投影
+        TrackMultiGeometrySegment table = tableOf(data, from);
+
         double bestDistSq = Double.MAX_VALUE;
         int bestSeg = -1;
         double bestFrac = 0;
@@ -526,6 +600,14 @@ public class OffWorldMovementTrack {
             VecYPR pb = points.get(i + 1);
             double ax = pa.x + offset.x, ay = pa.y + offset.y, az = pa.z + offset.z;
             double bx = pb.x + offset.x, by = pb.y + offset.y, bz = pb.z + offset.z;
+
+            if (table != null) {
+                Vec3d ra = rotateIfTable(data, table, ax, ay, az);
+                Vec3d rb = rotateIfTable(data, table, bx, by, bz);
+                ax = ra.x; ay = ra.y; az = ra.z;
+                bx = rb.x; by = rb.y; bz = rb.z;
+            }
+
             double dx = bx - ax, dy = by - ay, dz = bz - az;
             double segLen2 = dx * dx + dy * dy + dz * dz;
             if (segLen2 < EPS) continue;

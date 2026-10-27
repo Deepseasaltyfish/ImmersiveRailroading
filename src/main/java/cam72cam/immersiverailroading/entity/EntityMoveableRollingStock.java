@@ -58,6 +58,8 @@ public abstract class EntityMoveableRollingStock extends EntityRidableRollingSto
 
     public boolean newlyPlaced = false;
 
+    public long onMovingTableUntilTick = 0;
+
     @Override
     public void load(TagCompound data) {
         super.load(data);

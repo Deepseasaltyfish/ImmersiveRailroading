@@ -49,9 +49,13 @@ public class Simulation {
             simulateTick(i);
         }
 
-        boolean sendPackets = world.getTicks() % (Config.ConfigDebug.physicsFutureTicks / 2) == 0;
+        long now = world.getTicks();
+        boolean lowFreqDue = now % (Config.ConfigDebug.physicsFutureTicks / 2) == 0;
+        boolean anyMovingTable = loaded != null && loaded.stream()
+                .anyMatch(s -> now < s.onMovingTableUntilTick);
+
+        List<Player> players = (lowFreqDue || anyMovingTable) ? world.getEntities(Player.class) : null;
         double syncDistanceSq = ImmersiveRailroading.ENTITY_SYNC_DISTANCE * ImmersiveRailroading.ENTITY_SYNC_DISTANCE;
-        List<Player> players = sendPackets ? world.getEntities(Player.class) : null;
 
         // Apply new states
         for (EntityCoupleableRollingStock stock : loaded) {
@@ -60,7 +64,13 @@ public class Simulation {
                 state.dirty = false;
             }
             stock.positions = stock.states.stream().map(TickPos::new).collect(Collectors.toList());
-            if (sendPackets && players.stream().anyMatch(player -> player.getPosition().distanceToSquared(stock.getPosition()) < syncDistanceSq)) {
+
+            if (players == null) {
+                continue;
+            }
+            boolean onMovingTable = now < stock.onMovingTableUntilTick;
+            if ((lowFreqDue || onMovingTable)
+                    && players.stream().anyMatch(player -> player.getPosition().distanceToSquared(stock.getPosition()) < syncDistanceSq)) {
                 new MRSSyncPacket(stock, stock.positions).sendToObserving(stock);
             }
         }

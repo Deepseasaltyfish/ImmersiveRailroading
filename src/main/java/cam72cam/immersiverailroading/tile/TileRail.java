@@ -181,7 +181,6 @@ public class TileRail extends TileRailBase {
 				}
 			}
 
-			// 新增：每 tick 同步 seg.tablePos，并根据 shouldUpdate 做 TABLE_GAP 建删
 			TrackMultiGeometrySegment seg = WorldData.get(getWorld()).getTrackBlock(getParentWithoutDamage());
 			if (seg != null) {
 				seg.updateTablePos(getWorld(), info.tablePos);
@@ -193,6 +192,7 @@ public class TileRail extends TileRailBase {
 				List<EntityCoupleableRollingStock> ents = getWorld().getEntities((EntityCoupleableRollingStock stock) -> stock.getPosition().distanceTo(new Vec3d(getPos())) < maxRange, EntityCoupleableRollingStock.class);
 				for(EntityCoupleableRollingStock stock : ents) {
 					stock.states.forEach(state -> state.dirty = true);
+					stock.onMovingTableUntilTick = getWorld().getTicks() + 5;
 					Simulation.forceQuickUpdates = true;
 				}
 			}

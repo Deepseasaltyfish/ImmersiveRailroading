@@ -1,6 +1,7 @@
 package cam72cam.immersiverailroading.track.graph;
 
 import cam72cam.immersiverailroading.library.SwitchState;
+import cam72cam.immersiverailroading.library.TrackItems;
 import cam72cam.immersiverailroading.thirdparty.trackapi.IRPathingData;
 import cam72cam.immersiverailroading.track.VecYPR;
 import cam72cam.immersiverailroading.util.RailInfo;
@@ -21,7 +22,23 @@ public class OffWorldMovementTrack {
         if (data == null) return;
 
         double motionDist = motion.length();
-        if (motionDist < EPS) return;
+        if (motionDist < EPS) {
+            if(current.getTopoEdge() != null) {
+                TrackEdge edge = current.getTopoEdge();
+                if(edge.edgeType == TrackEdge.EdgeType.NORMAL) {
+                    Vec3i trackBlockPos = TrackRegionUtil.toBlockPos(edge.from.regionPos, edge.from.regionBlockPos);
+                    TrackMultiGeometrySegment segment = WorldData.get(world).getTrackBlock(trackBlockPos);
+                    if(segment.type == TrackItems.TURNTABLE) {
+                        Vec3d next = positionOnEdge(edge, current.getTopoT(), world);
+                        current.advanceTo(next);//special
+                        System.out.println(next);
+                    }
+                }
+            } else {
+                initCurrent(current, world, gauge);
+            }
+            return;
+        }
 
         if (current.getTopoEdge() == null) {
             if (!initCurrent(current, world, gauge)) return;
@@ -306,7 +323,7 @@ public class OffWorldMovementTrack {
             }
         }
 
-        int branchIdx = branchIndexFromState(si.segment.switchState);
+        int branchIdx = branchIndexFromState(si.segment.getSwitchState());
         if (branchIdx <= 0) {
             for (TrackEdge e : cands) {
                 if (e.equals(incoming)) continue;
@@ -377,7 +394,7 @@ public class OffWorldMovementTrack {
         WorldData data = WorldData.get(world);
         if (data == null) return false;
 
-        Vec3d pos = current.getTopoPos();
+        Vec3d pos = current.getUMCPos();
         double maxRadius = Math.max(gauge * 2, 2);
         double maxRadiusSq = maxRadius * maxRadius;
 

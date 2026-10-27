@@ -21,6 +21,7 @@ import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.serialization.TagCompound;
 import cam72cam.mod.serialization.TagField;
 import cam72cam.mod.serialization.TagMapper;
+import cam72cam.mod.world.World;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +35,16 @@ public class TileRail extends TileRailBase {
 
 	@TagField(value = "subInfoPos", mapper = Vec3iListMapper.class)
 	public List<Vec3i> subInfoPos;
+
+	//todo multi gauges support
+//	@TagField("subGaugeInfo")
+//	public RailInfo subGaugeInfo;
+//
+//	@TagField(value = "subGaugeInfos", mapper = RailInfo.subInfosMapper.class)
+//	public List<RailInfo> subGaugeInfos;
+//
+//	@TagField(value = "subGaugeInfoPos", mapper = Vec3iListMapper.class)
+//	public List<Vec3i> subGaugeInfoPos;
 
 	@TagField("buildTimeMs")
 	private long buildTimeMs;
@@ -169,6 +180,13 @@ public class TileRail extends TileRailBase {
 					shouldUpdate = true;
 				}
 			}
+
+			// 新增：每 tick 同步 seg.tablePos，并根据 shouldUpdate 做 TABLE_GAP 建删
+			TrackMultiGeometrySegment seg = WorldData.get(getWorld()).getTrackBlock(getParentWithoutDamage());
+			if (seg != null) {
+				seg.updateTablePos(getWorld(), info.tablePos);
+			}
+
 			if(shouldUpdate){
 				this.markDirty();
 				int maxRange = Math.max(info.settings.length, info.settings.transfertableEntrySpacing * info.settings.transfertableEntryCount);

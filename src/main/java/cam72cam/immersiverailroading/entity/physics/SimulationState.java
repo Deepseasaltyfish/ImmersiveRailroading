@@ -278,14 +278,11 @@ public class SimulationState {
                 if (t >= 0) rear.advanceTo(lastRearEdge, t, 0);
             }
 
-            Vec3d frontStart = front.getTopoPos();
-            Vec3d rearStart = rear.getTopoPos();
-
             OffWorldMovementTrack.getNextPosition(front, couplerVecFront, config.gauge.value(), config.world);
             OffWorldMovementTrack.getNextPosition(rear, couplerVecRear, config.gauge.value(), config.world);
 
-            couplerPositionFront = front.getTopoPos();
-            couplerPositionRear = rear.getTopoPos();
+            couplerPositionFront = front.getUMCPos();
+            couplerPositionRear = rear.getUMCPos();
 
             return;
         }
@@ -394,6 +391,9 @@ public class SimulationState {
             IRPathingData nextFront = new IRPathingData(config.world, positionFront, rollFront);
             IRPathingData nextRear = new IRPathingData(config.world, positionRear, rollRear);
 
+            Vec3d beforeFront = nextFront.getUMCPos();
+            Vec3d beforeRear = nextRear.getUMCPos();
+
             if (lastFrontEdge != null) {
                 double t = OffWorldMovementTrack.projectOntoEdge(lastFrontEdge, positionFront, config.world);
                 if (t >= 0) nextFront.advanceTo(lastFrontEdge, t, rollFront);
@@ -403,18 +403,15 @@ public class SimulationState {
                 if (t >= 0) nextRear.advanceTo(lastRearEdge, t, rollRear);
             }
 
-            Vec3d topoBeforeFront = nextFront.getTopoPos();
-            Vec3d topoBeforeRear = nextRear.getTopoPos();
-
             OffWorldMovementTrack.getNextPosition(nextFront, VecUtil.fromWrongYaw(distance, yawFront), config.gauge.value(), config.world);
             OffWorldMovementTrack.getNextPosition(nextRear, VecUtil.fromWrongYaw(distance, yawRear), config.gauge.value(), config.world);
 
-            Vec3d nextFrontPos = nextFront.getTopoPos();
-            Vec3d nextRearPos = nextRear.getTopoPos();
+            Vec3d nextFrontPos = nextFront.getUMCPos();
+            Vec3d nextRearPos = nextRear.getUMCPos();
 
-            if (!nextFrontPos.equals(topoBeforeFront) || !nextRearPos.equals(topoBeforeRear)) {
-                yawFront = VecUtil.toWrongYaw(nextFrontPos.subtract(topoBeforeFront));
-                yawRear = VecUtil.toWrongYaw(nextRearPos.subtract(topoBeforeRear));
+            if (!nextFrontPos.equals(beforeFront) || !nextRearPos.equals(beforeRear)) {
+                yawFront = VecUtil.toWrongYaw(nextFrontPos.subtract(beforeFront));
+                yawRear = VecUtil.toWrongYaw(nextRearPos.subtract(beforeRear));
                 rollFront = (float) -nextFront.getRoll();
                 rollRear = (float) -nextRear.getRoll();
 

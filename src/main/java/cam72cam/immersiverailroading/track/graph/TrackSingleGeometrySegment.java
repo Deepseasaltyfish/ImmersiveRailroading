@@ -15,6 +15,7 @@ import cam72cam.mod.item.ItemStack;
 import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;
+import util.Matrix4;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -22,9 +23,7 @@ import java.util.HashSet;
 import java.util.List;
 
 public class TrackSingleGeometrySegment {
-    // 物理绝对坐标（对于转弯，这是子方块位置；普通段就是自己）
     public final Vec3i absPos;
-    // 拓扑归属坐标（永远指向所在的 TrackMultiGeometrySegment 的中心坐标，用于防误删）
     public final Vec3i parentAbsPos;
 
     public final Gauge gauge;
@@ -37,8 +36,8 @@ public class TrackSingleGeometrySegment {
     public final TrackFaceTransSetting.FacePivotType facePivotType;
     public final Vec3d facePivotOffset;
 
-    public final HashSet<Vec3i> positionsCache;
-    public final List<VecYPR> pointsCache;
+    public HashSet<Vec3i> positionsCache;
+    public List<VecYPR> pointsCache;
 
     private BuilderCubicCurve builderCache;
     private World builderWorldCache;
@@ -61,7 +60,14 @@ public class TrackSingleGeometrySegment {
         } else if(trackBlock.info.settings.type == TrackItems.SWITCH && switchIndex == 1) {
             builder = (BuilderCubicCurve) trackBlock.subInfos.get(0).getBuilder(world, trackBlock.subInfoPos.get(0));
         } else if(trackBlock.info.settings.type == TrackItems.TURNTABLE) {
-            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, trackBlock.getPos());
+            builder = (BuilderCubicCurve) trackBlock.info.withSettings(
+                    mutable -> {
+                        mutable.type = TrackItems.STRAIGHT;
+                        mutable.length = mutable.length * 2 + 1;
+                    }
+            ).with(mutable -> {
+                mutable.placementInfo = mutable.placementInfo.withYaw(VecUtil.toWrongYaw(mutable.placementInfo.facing().getAngle()) + 180);
+            }).getBuilder(world, trackBlock.getPos());
         } else if(trackBlock.info.settings.type == TrackItems.TRANSFERTABLE) {
             builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, trackBlock.getPos());
         } else{ // common way and legacy switch non-straight way
@@ -69,7 +75,11 @@ public class TrackSingleGeometrySegment {
         }
 
         this.yaw = builder.info.placementInfo.yaw;
-        this.placementPosition = builder.info.placementInfo.placementPosition;
+        if (trackBlock.info.settings.type == TrackItems.TURNTABLE) {
+            this.placementPosition = builder.info.placementInfo.placementPosition.add(0, 1, 0);
+        } else {
+            this.placementPosition = builder.info.placementInfo.placementPosition;
+        }
         this.baseCurve = builder.getCurve();
         this.rollAndOffsetInfo = builder.info.settings.rollAndOffsetInfo;
         this.referenceTrack = builder.info.settings.track;
@@ -78,6 +88,25 @@ public class TrackSingleGeometrySegment {
 
         this.positionsCache = builder.positionsCache;
         this.pointsCache = builder.getPath(0.25 * gauge.scale());
+    }
+
+    public void updateForTable(double tablePos) {
+        World world = builderWorldCache;
+        if (world == null) return;
+
+        Vec3d centerLocal = new Vec3d(0.5, 0.5, 0.5);
+
+        float newYaw = (float) tablePos;
+
+        Vec3d local = placementPosition.subtract(centerLocal);
+        Matrix4 mat = new Matrix4();
+        mat.rotate(Math.toRadians(-tablePos), 0, 1, 0);
+        Vec3d newPlacement = centerLocal.add(mat.apply(local));
+
+        updateBuilder(world, newYaw, newPlacement);
+
+        this.positionsCache = builderCache.positionsCache;
+        this.pointsCache = builderCache.getPath(0.25 * gauge.scale());
     }
 
     public Vec3i getBlockPos() {
@@ -320,5 +349,30 @@ public class TrackSingleGeometrySegment {
         builderCache = new BuilderCubicCurve(info, world, absPos, false);
         builderWorldCache = world;
         return builderCache;
+    }
+
+    private void updateBuilder(World world, float newYaw, Vec3d newPlacement) {
+        Matrix4 mat = new Matrix4();
+        mat.rotate(Math.toRadians(-newYaw), 0, 1, 0);
+        CubicCurve rotated = baseCurve.apply(mat);
+
+        RailSettings settings = new RailSettings(
+                gauge, referenceTrack,
+                TrackItems.CUSTOM, TrackItems.CUSTOM,
+                10, 90, 1, TrackSmoothing.NEITHER,
+                new EndPointData(0), new EndPointData(0),
+                rollAndOffsetInfo, rollAndOffsetInfo,
+                TrackDirection.NONE, new TrackFaceTransSetting(0.1f, facePivotType, facePivotOffset),
+                Fuzzy.DIRT.example(), ItemStack.EMPTY,
+                false, false,
+                0, 0//todo
+        );
+        RailInfo info = new RailInfo(
+                settings,
+                new PlacementInfo(rotated.p1, TrackDirection.NONE, newYaw, rotated.ctrl1).offset(newPlacement),
+                new PlacementInfo(rotated.p2, TrackDirection.NONE, newYaw, rotated.ctrl2).offset(newPlacement)
+        );
+        builderCache = new BuilderCubicCurve(info, world, absPos, false);
+        builderWorldCache = world;
     }
 }

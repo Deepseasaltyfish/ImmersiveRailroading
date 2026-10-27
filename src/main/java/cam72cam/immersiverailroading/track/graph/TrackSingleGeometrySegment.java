@@ -69,13 +69,17 @@ public class TrackSingleGeometrySegment {
                 mutable.placementInfo = mutable.placementInfo.withYaw(VecUtil.toWrongYaw(mutable.placementInfo.facing().getAngle()) + 180);
             }).getBuilder(world, trackBlock.getPos());
         } else if(trackBlock.info.settings.type == TrackItems.TRANSFERTABLE) {
-            builder = (BuilderCubicCurve) trackBlock.info.withSettings(mutable -> mutable.type = TrackItems.STRAIGHT).getBuilder(world, trackBlock.getPos());
+            builder = (BuilderCubicCurve) trackBlock.info.withSettings(
+                    mutable -> mutable.type = TrackItems.STRAIGHT
+            ).with(mutable -> {
+                mutable.placementInfo = mutable.placementInfo.withYaw(VecUtil.toWrongYaw(mutable.placementInfo.facing().getAngle() + 180));
+            }).getBuilder(world, trackBlock.getPos());
         } else{ // common way and legacy switch non-straight way
             builder = (BuilderCubicCurve) trackBlock.info.getBuilder(world, trackBlock.getPos());
         }
 
         this.yaw = builder.info.placementInfo.yaw;
-        if (trackBlock.info.settings.type == TrackItems.TURNTABLE) {
+        if (trackBlock.info.settings.type.isTable()) {
             this.placementPosition = builder.info.placementInfo.placementPosition.add(0, 1, 0);
         } else {
             this.placementPosition = builder.info.placementInfo.placementPosition;
@@ -90,20 +94,29 @@ public class TrackSingleGeometrySegment {
         this.pointsCache = builder.getPath(0.25 * gauge.scale());
     }
 
-    public void updateForTable(double tablePos) {
+    public void updateForTable(double tablePos, TrackItems type) {
         World world = builderWorldCache;
         if (world == null) return;
 
-        Vec3d centerLocal = new Vec3d(0.5, 0.5, 0.5);
+        float newYaw;
+        Vec3d newPlacement;
 
-        float newYaw = (float) tablePos;
-
-        Vec3d local = placementPosition.subtract(centerLocal);
-        Matrix4 mat = new Matrix4();
-        mat.rotate(Math.toRadians(-tablePos), 0, 1, 0);
-        Vec3d newPlacement = centerLocal.add(mat.apply(local));
-
-        updateBuilder(world, newYaw, newPlacement);
+        if (type == TrackItems.TURNTABLE) {
+            Vec3d centerLocal = new Vec3d(0.5, 0.5, 0.5);
+            newYaw = (float) tablePos;
+            Vec3d local = placementPosition.subtract(centerLocal);
+            Matrix4 mat = new Matrix4();
+            mat.rotate(Math.toRadians(-tablePos), 0, 1, 0);
+            newPlacement = centerLocal.add(mat.apply(local));
+            updateBuilder(world, newYaw, newPlacement, true);
+        } else if (type == TrackItems.TRANSFERTABLE) {
+            newYaw = yaw;
+            Vec3d delta = new Vec3d(-tablePos, 0, 0).rotateYaw(yaw);
+            newPlacement = placementPosition.add(delta);
+            updateBuilder(world, newYaw, newPlacement, false);
+        } else {
+            return;
+        }
 
         this.positionsCache = builderCache.positionsCache;
         this.pointsCache = builderCache.getPath(0.25 * gauge.scale());
@@ -351,10 +364,13 @@ public class TrackSingleGeometrySegment {
         return builderCache;
     }
 
-    private void updateBuilder(World world, float newYaw, Vec3d newPlacement) {
-        Matrix4 mat = new Matrix4();
-        mat.rotate(Math.toRadians(-newYaw), 0, 1, 0);
-        CubicCurve rotated = baseCurve.apply(mat);
+    private void updateBuilder(World world, float newYaw, Vec3d newPlacement, boolean rotateCurve) {
+        CubicCurve rotated = baseCurve;
+        if(rotateCurve) {
+            Matrix4 mat = new Matrix4();
+            mat.rotate(Math.toRadians(-newYaw), 0, 1, 0);
+            rotated = baseCurve.apply(mat);
+        }
 
         RailSettings settings = new RailSettings(
                 gauge, referenceTrack,

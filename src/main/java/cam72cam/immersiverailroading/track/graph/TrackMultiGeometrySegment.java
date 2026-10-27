@@ -68,7 +68,7 @@ public class TrackMultiGeometrySegment {
         for(Map<Gauge, TrackSingleGeometrySegment> branch : paths) {
             for(Map.Entry<Gauge, TrackSingleGeometrySegment> entry : branch.entrySet()) {
                 TrackSingleGeometrySegment single = entry.getValue();
-                single.updateForTable(tablePos);
+                single.updateForTable(tablePos, type);
             }
         }
         WorldData.get(world).setTrackBlock(TrackRegionUtil.toBlockPos(regionPos, regionBlockPos), this);
@@ -96,7 +96,7 @@ public class TrackMultiGeometrySegment {
             for(int j = 0; j < segmentCount; j++) {
                 Gauge gauge = Gauge.from(buffer.getDouble());
                 TrackSingleGeometrySegment single = new TrackSingleGeometrySegment(buffer, world);
-                single.updateForTable(tablePos);
+                single.updateForTable(tablePos, type);
                 branch.put(gauge, single);
             }
             paths.add(branch);

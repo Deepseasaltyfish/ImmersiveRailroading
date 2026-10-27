@@ -31,7 +31,6 @@ public class OffWorldMovementTrack {
                     if(segment.type == TrackItems.TURNTABLE) {
                         Vec3d next = positionOnEdge(edge, current.getTopoT(), world);
                         current.advanceTo(next);//special
-                        System.out.println(next);
                     }
                 }
             } else {

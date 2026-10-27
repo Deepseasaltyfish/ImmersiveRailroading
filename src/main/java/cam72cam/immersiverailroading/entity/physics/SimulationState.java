@@ -424,6 +424,18 @@ public class SimulationState {
                 roll = (float) Simulation.calculateRoll(rollFront, rollRear);
                 pitch = (float) Math.toDegrees(FastMath.atan2(bogeyDelta.y, nextRearPos.distanceTo(nextFrontPos)));
                 position = position.add(deltaCenter);
+
+                if (Math.abs(distance) < 1e-6) { // is this strong?
+                    yawFront = yaw;
+                    yawRear = yaw;
+                    rollFront = roll;
+                    rollRear = roll;
+                } else {
+                    yawFront = VecUtil.toWrongYaw(nextFrontPos.subtract(beforeFront));
+                    yawRear = VecUtil.toWrongYaw(nextRearPos.subtract(beforeRear));
+                    rollFront = (float) -nextFront.getRoll();
+                    rollRear = (float) -nextRear.getRoll();
+                }
             }
 
             if (isReversed) {

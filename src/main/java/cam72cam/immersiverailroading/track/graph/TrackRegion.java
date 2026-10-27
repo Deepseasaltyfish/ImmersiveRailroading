@@ -12,7 +12,6 @@ public class TrackRegion {
     public final Map<Vec3i, TrackMultiGeometrySegment> trackBlocks;// fake final
 
     boolean needsWriteToDisk;
-    boolean dirty;
 
     public TrackRegion(long regionPos) {
         this.regionPos = regionPos;
@@ -98,7 +97,6 @@ public class TrackRegion {
                 return false;
             }
             needsWriteToDisk = true;
-            dirty = true;
             return true;
         }
     }
@@ -108,7 +106,6 @@ public class TrackRegion {
             Vec3i relBlockPos = TrackRegionUtil.toRegionBlockPos(pos);
             trackBlocks.put(relBlockPos, block);
             needsWriteToDisk = true;
-            dirty = true;
         }
     }
 }

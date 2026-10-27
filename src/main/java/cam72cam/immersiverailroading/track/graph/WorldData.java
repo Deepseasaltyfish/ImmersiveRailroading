@@ -4,6 +4,7 @@ import cam72cam.immersiverailroading.Config;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.library.TrackItems;
+import cam72cam.immersiverailroading.net.TrackRegionDeltaPacket;
 import cam72cam.immersiverailroading.net.TrackRegionPacket;
 import cam72cam.immersiverailroading.track.VecYPR;
 import cam72cam.mod.entity.Player;
@@ -13,6 +14,7 @@ import cam72cam.mod.world.World;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.*;
 
 import static cam72cam.immersiverailroading.track.graph.TrackRegionUtil.vecToRegion;
@@ -49,6 +51,101 @@ public class WorldData {
     final Map<TrackNodeId, SwitchInfo> switchByHub = new HashMap<>();
     final Map<TrackNodeId, SwitchInfo> switchByTurn = new HashMap<>();
 
+    // =============== 增量同步 ===============
+
+    /**
+     * 单个增量操作。regionBlockPos 使用 region 内坐标（512 内），
+     * 序列化时复用 TrackMultiGeometrySegment 的 write/sizeBytes。
+     */
+    public static class DeltaOp {
+        public enum Kind { PUT, REMOVE }
+
+        public final Kind kind;
+        public final Vec3i regionBlockPos;
+        /** REMOVE 时为 null */
+        public final TrackMultiGeometrySegment block;
+
+        public DeltaOp(Kind kind, Vec3i regionBlockPos, TrackMultiGeometrySegment block) {
+            this.kind = kind;
+            this.regionBlockPos = regionBlockPos;
+            this.block = block;
+        }
+
+        public static DeltaOp put(Vec3i regionBlockPos, TrackMultiGeometrySegment block) {
+            return new DeltaOp(Kind.PUT, regionBlockPos, block);
+        }
+
+        public static DeltaOp remove(Vec3i regionBlockPos) {
+            return new DeltaOp(Kind.REMOVE, regionBlockPos, null);
+        }
+    }
+
+    /** 每个 tick 内按 region 聚合的待发增量。同 pos 后写覆盖先写。 */
+    private final Map<Long, Map<Vec3i, DeltaOp>> pendingDeltas = new HashMap<>();
+
+    /** 显式请求全量重发的 region（兜底通道，替代旧的 dirty 广播） */
+    private final Set<Long> pendingFullSync = new HashSet<>();
+
+    /** 外部可调用的兜底全量重发接口 */
+    public void requestFullSync(long regionId) {
+        synchronized (pendingFullSync) {
+            pendingFullSync.add(regionId);
+        }
+    }
+
+    private void queueDelta(long regionId, DeltaOp op) {
+        synchronized (pendingDeltas) {
+            pendingDeltas.computeIfAbsent(regionId, k -> new HashMap<>())
+                    .put(op.regionBlockPos, op);
+        }
+    }
+
+    /**
+     * DeltaOp 序列化。放在 WorldData（同包）里以便访问 TrackMultiGeometrySegment 的
+     * write/sizeBytes/构造，TrackRegionDeltaPacket 只调用这两个静态方法。
+     */
+    public static byte[] serializeDeltaOps(List<DeltaOp> ops) {
+        int size = Integer.BYTES;
+        for (DeltaOp op : ops) {
+            size += Byte.BYTES + 3 * Integer.BYTES;
+            if (op.kind == DeltaOp.Kind.PUT) {
+                size += op.block.sizeBytes();
+            }
+        }
+        ByteBuffer buf = ByteBuffer.allocate(size);
+        buf.putInt(ops.size());
+        for (DeltaOp op : ops) {
+            buf.put((byte) op.kind.ordinal());
+            buf.putInt(op.regionBlockPos.x);
+            buf.putInt(op.regionBlockPos.y);
+            buf.putInt(op.regionBlockPos.z);
+            if (op.kind == DeltaOp.Kind.PUT) {
+                op.block.write(buf);
+            }
+        }
+        return buf.array();
+    }
+
+    public static List<DeltaOp> deserializeDeltaOps(byte[] raw, World world, long regionId) {
+        ByteBuffer buf = ByteBuffer.wrap(raw);
+        int count = buf.getInt();
+        List<DeltaOp> ops = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            DeltaOp.Kind kind = DeltaOp.Kind.values()[buf.get() & 0xFF];
+            Vec3i regionBlockPos = new Vec3i(buf.getInt(), buf.getInt(), buf.getInt());
+            if (kind == DeltaOp.Kind.PUT) {
+                TrackMultiGeometrySegment block =
+                        new TrackMultiGeometrySegment(buf, world, regionId, regionBlockPos);
+                ops.add(new DeltaOp(kind, regionBlockPos, block));
+            } else {
+                ops.add(new DeltaOp(kind, regionBlockPos, null));
+            }
+        }
+        return ops;
+    }
+
+    // =============== 构造 / 加载 / 保存 ===============
+
     private WorldData(World world, File worldDirectory) {
         this.world = world;
         this.directory = worldDirectory;
@@ -74,7 +171,6 @@ public class WorldData {
                         TrackRegion region = new TrackRegion(id, TrackRegionUtil.readBuffer(file), world);
                         synchronized (regions) {
                             regions.put(id, region);
-                            ImmersiveRailroading.info("region %s,%s loaded", TrackRegionUtil.regionX(id), TrackRegionUtil.regionZ(id));
                         }
                     } catch (IOException | NumberFormatException e) {
                         throw new RuntimeException(e);
@@ -99,6 +195,10 @@ public class WorldData {
         return LOADED.computeIfAbsent(world, w -> new WorldData(w, null));
     }
 
+    public boolean hasRegion(long id) {
+        return regions.containsKey(id);
+    }
+
     private File regionFile(long region) {
         int x = TrackRegionUtil.regionX(region);
         int z = TrackRegionUtil.regionZ(region);
@@ -116,7 +216,6 @@ public class WorldData {
             if (region == null && create) {
                 region = new TrackRegion(id);
                 regions.put(id, region);
-                ImmersiveRailroading.info("region %s,%s loaded", TrackRegionUtil.regionX(id), TrackRegionUtil.regionZ(id));
             }
             return region;
         }
@@ -146,6 +245,11 @@ public class WorldData {
 
         buildTopologyFor(block);
         researchNeighbors(pos);
+
+        // 服务端才入队；客户端 apply 增量时不会再回传
+        if (world.isServer) {
+            queueDelta(regionId, DeltaOp.put(TrackRegionUtil.toRegionBlockPos(pos), block));
+        }
     }
 
     private void addTrackBlockToParents(Vec3i parentAbs, TrackMultiGeometrySegment block) {
@@ -207,6 +311,10 @@ public class WorldData {
             removeTrackBlockFromParents(pos, old);
         }
         removeTopologyFor(regionId, TrackRegionUtil.toRegionBlockPos(pos));
+
+        if (world.isServer) {
+            queueDelta(regionId, DeltaOp.remove(TrackRegionUtil.toRegionBlockPos(pos)));
+        }
         return true;
     }
 
@@ -257,33 +365,27 @@ public class WorldData {
     }
 
     public static void save(World world, File levelDirectory) {
-        ImmersiveRailroading.info("Save World %s / %s", levelDirectory.toString(), world.getId());
-        long st = System.currentTimeMillis();
         synchronized (LOADED) {
             if (LOADED.containsKey(world)) {
                 LOADED.get(world).saveInternal();
             }
         }
-        ImmersiveRailroading.info("World %s / %s saved in %sms", levelDirectory.toString(), world.getId(), System.currentTimeMillis() - st);
     }
 
     public static void load(World world, File levelDirectory) {
-        ImmersiveRailroading.info("Load World %s / %s", levelDirectory.toString(), world.getId());
-        long st = System.currentTimeMillis();
         synchronized (LOADED) {
             if (LOADED.containsKey(world)) {
-                ImmersiveRailroading.warn("World %s / %s already loaded!  This is a bug!", levelDirectory.toString(), world.getId());
+                ImmersiveRailroading.warn("World %s / %s already loaded!  This is a bug!",
+                        levelDirectory.toString(), world.getId());
             }
             WorldData data = new WorldData(world, new File(levelDirectory, "immersiverailroading" + world.getId()));
             LOADED.put(world, data);
 
             data.buildAll();
         }
-        ImmersiveRailroading.info("World %s / %s loaded in %sms", levelDirectory.toString(), world.getId(), System.currentTimeMillis() - st);
     }
 
     public static void unload(World world, File levelDirectory) {
-        ImmersiveRailroading.info("Unload Level %s / %s", levelDirectory.toString(), world.getId());
         synchronized (LOADED) {
             LOADED.remove(world);
         }
@@ -296,50 +398,111 @@ public class WorldData {
         }
     }
 
+    // =============== 服务端 tick：全量 + 增量 ===============
+
     private final Map<Player, Set<Long>> playerRegionMap = new HashMap<>();
+
     private void tick() {
-        if (world.isServer) {
-            List<Player> players = world.getEntities(Player.class);
+        if (!world.isServer) {
+            return;
+        }
 
-            List<Player> removedPlayers = new ArrayList<>(playerRegionMap.keySet());
-            removedPlayers.removeAll(players);
-            for (Player removedPlayer : removedPlayers) {
-                playerRegionMap.remove(removedPlayer);
-            }
+        List<Player> players = world.getEntities(Player.class);
 
-            for (Player player : players) {
-                Set<Long> sentRegions = playerRegionMap.computeIfAbsent(player, p -> new HashSet<>());
-                Set<Long> trackingRegions = new HashSet<>();
-                int radius = 16;
-                for (int x = -radius; x <= radius; x++) {
-                    for (int z = -radius; z <= radius; z++) {
-                        trackingRegions.add(vecToRegion(new Vec3i(player.getPosition()).add(x * 16, 0, z * 16)));
-                    }
-                }
-                for (Long trackingRegion : trackingRegions) {
-                    TrackRegion region = regions.get(trackingRegion);
+        List<Player> removedPlayers = new ArrayList<>(playerRegionMap.keySet());
+        removedPlayers.removeAll(players);
+        for (Player removedPlayer : removedPlayers) {
+            playerRegionMap.remove(removedPlayer);
+        }
 
-                    if (region == null) {
-                        if (sentRegions.contains(trackingRegion)) {
-                            sentRegions.remove(trackingRegion);
-                            new TrackRegionPacket(world, trackingRegion, null).sendToPlayer(player);
-                        }
-                        continue;
-                    }
-
-                    if (!sentRegions.contains(trackingRegion) || region.dirty) {
-                        sentRegions.add(trackingRegion);
-                        new TrackRegionPacket(world, trackingRegion, region).sendToPlayer(player);
-                    }
+        // 1. 首见全量 / 卸载空包
+        for (Player player : players) {
+            Set<Long> sentRegions = playerRegionMap.computeIfAbsent(player, p -> new HashSet<>());
+            Set<Long> trackingRegions = new HashSet<>();
+            int radius = 16;
+            for (int x = -radius; x <= radius; x++) {
+                for (int z = -radius; z <= radius; z++) {
+                    trackingRegions.add(vecToRegion(new Vec3i(player.getPosition()).add(x * 16, 0, z * 16)));
                 }
             }
-            for (TrackRegion region : regions.values()) {
-                region.dirty = false;
-            }
+            for (Long trackingRegion : trackingRegions) {
+                TrackRegion region = regions.get(trackingRegion);
 
-            if (++regionRefreshCounter >= Config.ConfigRegion.refreshIntervalTicks) {
-                regionRefreshCounter = 0;
-                refreshRegions();
+                if (region == null) {
+                    if (sentRegions.contains(trackingRegion)) {
+                        sentRegions.remove(trackingRegion);
+                        new TrackRegionPacket(world, trackingRegion, null).sendToPlayer(player);
+                    }
+                    continue;
+                }
+
+                // 首见才发全量；dirty 广播已移除
+                if (!sentRegions.contains(trackingRegion)) {
+                    sentRegions.add(trackingRegion);
+                    new TrackRegionPacket(world, trackingRegion, region).sendToPlayer(player);
+                }
+            }
+        }
+
+        // 2. 增量 flush（首见之后，保证客户端已收到基础全量）
+        flushDeltas();
+
+        // 3. 显式全量兜底请求
+        flushFullSyncRequests();
+
+        // 4. region 生命周期
+        if (++regionRefreshCounter >= Config.ConfigRegion.refreshIntervalTicks) {
+            regionRefreshCounter = 0;
+            refreshRegions();
+        }
+    }
+
+    private void flushDeltas() {
+        Map<Long, Map<Vec3i, DeltaOp>> snapshot;
+        synchronized (pendingDeltas) {
+            if (pendingDeltas.isEmpty()) {
+                return;
+            }
+            snapshot = new HashMap<>(pendingDeltas);
+            pendingDeltas.clear();
+        }
+
+        for (Map.Entry<Long, Map<Vec3i, DeltaOp>> entry : snapshot.entrySet()) {
+            long regionId = entry.getKey();
+            Map<Vec3i, DeltaOp> ops = entry.getValue();
+            if (ops.isEmpty()) continue;
+
+            // region 已卸载：客户端会被首见逻辑走全量，增量直接丢弃
+            if (!regions.containsKey(regionId)) continue;
+
+            List<DeltaOp> opList = new ArrayList<>(ops.values());
+
+            for (Map.Entry<Player, Set<Long>> e : playerRegionMap.entrySet()) {
+                // 只发给已同步过该 region 的玩家；未同步者等首见全量
+                if (e.getValue().contains(regionId)) {
+                    new TrackRegionDeltaPacket(world, regionId, opList).sendToPlayer(e.getKey());
+                }
+            }
+        }
+    }
+
+    private void flushFullSyncRequests() {
+        Set<Long> copy;
+        synchronized (pendingFullSync) {
+            if (pendingFullSync.isEmpty()) {
+                return;
+            }
+            copy = new HashSet<>(pendingFullSync);
+            pendingFullSync.clear();
+        }
+
+        for (Long fullSyncId : copy) {
+            TrackRegion region = regions.get(fullSyncId);
+            if (region == null) continue;
+            for (Map.Entry<Player, Set<Long>> e : playerRegionMap.entrySet()) {
+                if (e.getValue().contains(fullSyncId)) {
+                    new TrackRegionPacket(world, fullSyncId, region).sendToPlayer(e.getKey());
+                }
             }
         }
     }
@@ -445,7 +608,6 @@ public class WorldData {
             TrackRegion region = new TrackRegion(r, TrackRegionUtil.readBuffer(f), world);
             synchronized (regions) {
                 regions.put(r, region);
-                ImmersiveRailroading.info("region %s,%s loaded", TrackRegionUtil.regionX(r), TrackRegionUtil.regionZ(r));
             }
 
             for (Map.Entry<Vec3i, TrackMultiGeometrySegment> e : region.trackBlocks.entrySet()) {
@@ -474,6 +636,14 @@ public class WorldData {
 
         trackBlockParentsByRegion.remove(r);
 
+        // 该 region 已卸载，丢弃积压的增量与兜底请求，避免发给已不在追踪集合的客户端
+        synchronized (pendingDeltas) {
+            pendingDeltas.remove(r);
+        }
+        synchronized (pendingFullSync) {
+            pendingFullSync.remove(r);
+        }
+
         if (region.needsWriteToDisk && directory != null) {
             try {
                 File file = regionFile(r);
@@ -491,7 +661,6 @@ public class WorldData {
         }
 
         regions.remove(r);
-        ImmersiveRailroading.info("region %s,%s unloaded", TrackRegionUtil.regionX(r), TrackRegionUtil.regionZ(r));
     }
 
     private void clearTopologyInRegion(long regionId) {
@@ -742,7 +911,6 @@ public class WorldData {
             long toRegion = TrackRegionUtil.vecToRegion(toNode.trackSingleGeometrySegment.parentAbsPos);
             Set<TrackNodeId> set = outgoingByToRegion.get(toRegion);
             if (set != null) {
-                // 只有该 from 不再有边指向 toRegion 时才移除
                 List<TrackEdge> fromList = outgoing.get(edge.from);
                 boolean stillHas = false;
                 if (fromList != null) {
@@ -949,30 +1117,25 @@ public class WorldData {
         }
     }
 
+    // =============== 客户端 region 加载 / 卸载 ===============
+
     public void clientUnloadRegion(long id) {
         synchronized (regions) {
             if (!regions.containsKey(id)) return;
-            // clearTopologyInRegion 内部会通过 outgoingByToRegion 反向索引，
-            // 把邻居指向本 region 的所有边一并清掉，不留幽灵边
             clearTopologyInRegion(id);
             trackBlockParentsByRegion.remove(id);
             regions.remove(id);
         }
-        ImmersiveRailroading.info("region %s,%s unloaded",
-                TrackRegionUtil.regionX(id), TrackRegionUtil.regionZ(id));
     }
 
     public void clientLoadRegion(long id, TrackRegion region) {
         synchronized (regions) {
-            // 覆盖写入：先清旧拓扑再放新数据
             if (regions.containsKey(id)) {
                 clearTopologyInRegion(id);
                 trackBlockParentsByRegion.remove(id);
             }
             regions.put(id, region);
         }
-        ImmersiveRailroading.info("region %s,%s loaded",
-                TrackRegionUtil.regionX(id), TrackRegionUtil.regionZ(id));
 
         // 1. parent 占位索引（必须先建，searchAndAddGap 依赖它扫邻居）
         for (Map.Entry<Vec3i, TrackMultiGeometrySegment> e : region.trackBlocks.entrySet()) {

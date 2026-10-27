@@ -210,8 +210,9 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				GlobalRender.registerItemMouseover(IRItems.ITEM_TRACK_BLUEPRINT, TrackBlueprintItemModel::renderMouseover);
 				GlobalRender.registerItemMouseover(IRItems.ITEM_MANUAL, MBBlueprintRender::renderMouseover);
 				GlobalRender.registerRender((state, pt) -> {
-					if(!MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY).is(IRItems.ITEM_GOLDEN_SPIKE)) return;
-					VolumetricCurveRenderer.renderWireFrame(state, pt);
+					if(MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY).is(IRItems.ITEM_GOLDEN_SPIKE) ||
+							MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY).is(IRItems.ITEM_LARGE_WRENCH))
+						VolumetricCurveRenderer.renderWireFrame(state, pt);
 				});
 
 				GlobalRender.registerOverlay((state, pt) -> {

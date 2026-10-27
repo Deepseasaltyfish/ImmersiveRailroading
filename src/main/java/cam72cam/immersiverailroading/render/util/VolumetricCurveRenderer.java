@@ -2,6 +2,7 @@ package cam72cam.immersiverailroading.render.util;
 
 import cam72cam.immersiverailroading.ConfigGraphics;
 import cam72cam.immersiverailroading.library.Gauge;
+import cam72cam.immersiverailroading.track.BuilderCubicCurve;
 import cam72cam.immersiverailroading.track.CubicCurve;
 import cam72cam.immersiverailroading.track.VecYPR;
 import cam72cam.immersiverailroading.track.graph.*;
@@ -61,7 +62,9 @@ public class VolumetricCurveRenderer {
                 for (Map<Gauge, TrackSingleGeometrySegment> branch : segment.paths) {
                     for (Map.Entry<Gauge, TrackSingleGeometrySegment> singleEntry : branch.entrySet()) {
                         TrackSingleGeometrySegment single = singleEntry.getValue();
-                        RailInfo info = single.getAndUpdateBuilder(world).info;
+                        BuilderCubicCurve builder = single.getAndUpdateBuilder(world);
+                        RailInfo info = builder.info;
+                        CubicCurve curve = builder.getCurve();
 
                         Vec3d blockOffset = new Vec3d(single.getBlockPos()).add(info.placementInfo.placementPosition);
 
@@ -75,7 +78,7 @@ public class VolumetricCurveRenderer {
                         appendCurve(draw, single.pointsCache, blockOffset.add(CURVE_Y_OFFSET), Color.LIME, 1 / 16f);
 
                         // 3. 控制柄（品红/青色/红色）
-                        appendHandles(draw, single.baseCurve, blockOffset.add(HANDLE_TOP_OFFSET),
+                        appendHandles(draw, curve, blockOffset.add(HANDLE_TOP_OFFSET),
                                 Color.MAGENTA, Color.CYAN, Color.RED, 1 / 16f, 1 / 4f);
                     }
                 }

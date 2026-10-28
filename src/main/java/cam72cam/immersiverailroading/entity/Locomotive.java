@@ -416,7 +416,7 @@ public abstract class Locomotive extends FreightTank {
 		}
 
 		if (getWorld().isServer) {
-			if (getDefinition().isCog() && getTickCount() % 20 == 0) {
+			if (getDefinition().isCog() && getTickCount() % 20 == 0 && internal.addedToChunk) {
 				SimulationState state = getCurrentState();
 				if (state != null) {
 					//todo

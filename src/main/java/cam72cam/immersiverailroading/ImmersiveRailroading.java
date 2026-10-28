@@ -82,6 +82,9 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				CommonEvents.WorldData.UNLOAD.subscribe(WorldData::unload);
 				World.onTick(WorldData::tick);
 
+				CommonEvents.WorldData.SAVE.subscribe(VehiclePersistence::save);     // 新增
+				CommonEvents.WorldData.LOAD.subscribe(VehiclePersistence::load);     // 新增
+
 				EntityRegistry.register(ImmersiveRailroading.instance, CarFreight::new, ImmersiveRailroading.ENTITY_SYNC_DISTANCE);
 				EntityRegistry.register(ImmersiveRailroading.instance, CarPassenger::new, ImmersiveRailroading.ENTITY_SYNC_DISTANCE);
 				EntityRegistry.register(ImmersiveRailroading.instance, CarTank::new, ImmersiveRailroading.ENTITY_SYNC_DISTANCE);
@@ -113,6 +116,7 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				Packet.register(VehicleSyncPacket::new, PacketDirection.ServerToClient);
 
 				ServerChronoState.register();
+				OfflineEntityPool.register();
 				WirelessRemoteControlServer.init();
 
 				IRBlocks.register();

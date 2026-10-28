@@ -3,6 +3,7 @@ package cam72cam.immersiverailroading;
 import cam72cam.immersiverailroading.entity.*;
 import cam72cam.immersiverailroading.entity.physics.chrono.ServerChronoState;
 import cam72cam.immersiverailroading.gui.AugmentFilterGUI;
+import cam72cam.immersiverailroading.gui.GlobalRailwayMap;
 import cam72cam.immersiverailroading.gui.overlay.GuiBuilder;
 import cam72cam.immersiverailroading.items.ItemPaintBrush;
 import cam72cam.immersiverailroading.library.*;
@@ -204,6 +205,7 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				Keyboard.registerKey("ir_keys.start_stop_engine", KeyCode.ADD, "key.categories." + ImmersiveRailroading.MODID, onKeyPress.apply(KeyTypes.START_STOP_ENGINE));
 				Keyboard.registerKey("ir_keys.bell", KeyCode.SUBTRACT, "key.categories." + ImmersiveRailroading.MODID, onKeyPress.apply(KeyTypes.BELL));
 				Keyboard.registerKey("ir_keys.config", KeyCode.DIVIDE, "key.categories." + ImmersiveRailroading.MODID, () -> GuiTypes.CONFIG.open(MinecraftClient.getPlayer()));
+				Keyboard.registerKey("ir_keys.global_map", KeyCode.M, "key.categories." + ImmersiveRailroading.MODID, () -> GuiTypes.GLOBAL_RAILWAY_MAP.open(MinecraftClient.getPlayer()));
 
 				Audio.setSoundChannels(ConfigSound.customAudioChannels);
 				break;
@@ -212,7 +214,9 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				GlobalRender.registerItemMouseover(IRItems.ITEM_MANUAL, MBBlueprintRender::renderMouseover);
 				GlobalRender.registerRender((state, pt) -> {
 					if(MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY).is(IRItems.ITEM_GOLDEN_SPIKE) ||
-							MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY).is(IRItems.ITEM_LARGE_WRENCH))
+							MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY).is(IRItems.ITEM_LARGE_WRENCH) ||
+							MinecraftClient.getPlayer().getHeldItem(Player.Hand.SECONDARY).is(IRItems.ITEM_GOLDEN_SPIKE) ||
+							MinecraftClient.getPlayer().getHeldItem(Player.Hand.SECONDARY).is(IRItems.ITEM_LARGE_WRENCH))
 						VolumetricCurveRenderer.renderWireFrame(state, pt);
 				});
 
@@ -225,6 +229,12 @@ public class ImmersiveRailroading extends ModCore.Mod {
 					if (stock.getDefinition().getOverlay() != null) {
 						stock.getDefinition().getOverlay().render(state, stock);
 					}
+				});
+
+				ClientEvents.MOUSE_GUI.subscribe(evt -> {
+					GlobalRailwayMap map = GlobalRailwayMap.current();
+					if (map == null) return true;
+					return map.handleMouse(evt);
 				});
 
 				ClientEvents.MOUSE_GUI.subscribe(evt -> {

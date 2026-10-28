@@ -80,6 +80,7 @@ public class SimulationState {
         public UUID id;
         public Gauge gauge;
         public World world;
+        public boolean offline;
 
         public double width;
         public double length;
@@ -156,6 +157,8 @@ public class SimulationState {
             this.hasPressureBrake = stock.getDefinition().hasPressureBrake();
 
             this.rollingResistanceCoefficient = stock.getDefinition().rollingResistanceCoefficient;
+
+            this.offline = !stock.internal.addedToChunk;
         }
 
         @Override
@@ -310,6 +313,14 @@ public class SimulationState {
     }
 
     public void calculateBlockCollisions(List<Vec3i> blocksAlreadyBroken) {
+        if (config.offline) {
+            this.collidingBlocks = Collections.emptyList();
+            this.trackToUpdate = Collections.emptyList();
+            this.interferingBlocks = Collections.emptyList();
+            this.interferingResistance = 0;
+            return;
+        }
+
         this.collidingBlocks = config.world.blocksInBounds(this.bounds);
         this.trackToUpdate = new ArrayList<>();
         this.interferingBlocks = new ArrayList<>();

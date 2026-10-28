@@ -3,6 +3,7 @@ package cam72cam.immersiverailroading.entity.physics;
 import cam72cam.immersiverailroading.Config;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.entity.EntityCoupleableRollingStock;
+import cam72cam.immersiverailroading.entity.OfflineEntityPool;
 import cam72cam.immersiverailroading.entity.physics.chrono.ChronoState;
 import cam72cam.immersiverailroading.entity.physics.chrono.ServerChronoState;
 import cam72cam.immersiverailroading.net.MRSSyncPacket;
@@ -95,6 +96,16 @@ public class Simulation {
             // We should only need to do this when stock is no longer at rest or changes dirty flag
             int lastCount = loaded == null ? 0 : loaded.size();
             loaded = world.getEntities(EntityCoupleableRollingStock.class);
+            // 合并池里的离线车辆
+            OfflineEntityPool pool = OfflineEntityPool.get(world);
+            for (EntityCoupleableRollingStock stock : pool.getAllRollingStock()) {
+                if (!stock.internal.addedToChunk && !stock.internal.isDead) {
+                    if (!loaded.contains(stock)) {
+                        loaded.add(stock);
+                    }
+                }
+            }
+
             boolean newChunksLoaded = lastCount != loaded.size();
 
             for (EntityCoupleableRollingStock stock : loaded) {
@@ -124,21 +135,19 @@ public class Simulation {
                     continue;
                 }
 
-                // Keep it loaded
-                world.keepLoaded(new Vec3i(state.position));
+                boolean offline = !stock.internal.addedToChunk;
 
-                if (state.consist.positions == null) {
-                    continue;
-                }
+                // 离线车辆完全不加载 chunk
+                if (!offline) {
+                    world.keepLoaded(new Vec3i(state.position));
 
-                // Load interacting stock locations
-                // We could in the future do a HashSet<Consist> and reduce the calls to the world.
-                for (Vec3i pos : state.consist.positions) {
-                    if (!world.isBlockLoaded(pos)) {
-                        ImmersiveRailroading.debug("Loading chunk at position %s", pos);
-                        // Load the chunk, entities should be directly injected into the world
-                        world.getBlock(pos);
-                        newChunksLoaded = true;
+                    if (state.consist.positions != null) {
+                        for (Vec3i pos : state.consist.positions) {
+                            if (!world.isBlockLoaded(pos)) {
+                                world.getBlock(pos);
+                                newChunksLoaded = true;
+                            }
+                        }
                     }
                 }
             }

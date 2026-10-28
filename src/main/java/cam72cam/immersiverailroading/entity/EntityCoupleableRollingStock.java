@@ -201,12 +201,12 @@ public abstract class EntityCoupleableRollingStock extends EntityMoveableRolling
 
 		hadElectricalPower = hasElectricalPower();
 
-		if (this.getCurrentState() != null && !this.getCurrentState().atRest || ConfigDebug.keepStockLoaded) {
-			//Then exclude stocks not linked to any locomotive
-            if (!ConfigDebug.excludeStandaloneWagons || this.linkedToLocomotive) {
-                keepLoaded();
-            }
-        }
+		if (internal.addedToChunk
+				&& (this.getCurrentState() != null && !this.getCurrentState().atRest || ConfigDebug.keepStockLoaded)) {
+			if (!ConfigDebug.excludeStandaloneWagons || this.linkedToLocomotive) {
+				keepLoaded();
+			}
+		}
 
 		slackFrontPercent = 0;
 		slackRearPercent = 0;

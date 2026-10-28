@@ -410,6 +410,13 @@ public class OffWorldMovementTrack {
                 for (int z = -hori; z <= hori; z++) {
                     Vec3i scan = posBlock.add(x, y, z);
                     regionsToCheck.add(TrackRegionUtil.vecToRegion(scan));
+
+                    List<Vec3i> parents = data.getParentsAt(scan);
+                    if (parents != null) {
+                        for (Vec3i parentAbs : parents) {
+                            regionsToCheck.add(TrackRegionUtil.vecToRegion(parentAbs));
+                        }
+                    }
                 }
             }
         }

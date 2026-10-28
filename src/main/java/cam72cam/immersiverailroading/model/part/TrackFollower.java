@@ -128,7 +128,6 @@ public class TrackFollower {
 
     //Notice that we use bogeyYaw and distance to construct motion direction, so both of them affect plus-minus sign of roll
     public void nextPosition(World world, Gauge gauge, IRPathingData currentPosition, float rotationYaw, float bogeyYaw, double distance) {
-        // todo
         if(Config.ConfigDebug.offWorldPathing) {
             OffWorldMovementTrack.getNextPosition(currentPosition, VecUtil.fromWrongYaw(distance, bogeyYaw), gauge.value(), world);
             return;

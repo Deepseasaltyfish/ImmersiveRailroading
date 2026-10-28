@@ -18,7 +18,6 @@ import cam72cam.immersiverailroading.physics.MovementTrack;
 import cam72cam.immersiverailroading.thirdparty.trackapi.BlockEntityTrackTickable;
 import cam72cam.immersiverailroading.thirdparty.trackapi.IRPathingData;
 import cam72cam.immersiverailroading.track.graph.TrackMultiGeometrySegment;
-import cam72cam.immersiverailroading.track.graph.TrackRegion;
 import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.immersiverailroading.util.*;
 import cam72cam.mod.block.IRedstoneProvider;

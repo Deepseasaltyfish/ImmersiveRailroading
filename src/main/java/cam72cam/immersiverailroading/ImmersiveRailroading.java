@@ -232,6 +232,20 @@ public class ImmersiveRailroading extends ModCore.Mod {
 					}
 				});
 
+				// Remote Overlay
+				WirelessRemoteControlClient.init();
+		        GlobalRender.registerOverlay((state, _) -> {
+		            UUID activeLoco = WirelessRemoteControlClient.getLoco();
+		            if (activeLoco == null || WirelessRemoteControlClient.remoteGui == null) {
+		                return;
+		            }
+		            RemoteControlData data = WirelessRemoteControlClient.getData();
+		            if(data == null) {
+		                return;
+		            }
+		            WirelessRemoteControlClient.remoteGui.render(state, data);
+		        });
+
 				ClientEvents.MOUSE_GUI.subscribe(evt -> {
 					GlobalRailwayMap map = GlobalRailwayMap.current();
 					if (map == null) return true;
@@ -242,12 +256,21 @@ public class ImmersiveRailroading extends ModCore.Mod {
 					if (!MinecraftClient.isReady()) {
 						return true;
 					}
+
+					// Remote control
+					UUID activeLoco = WirelessRemoteControlClient.getLoco();
+				    if (activeLoco != null) {
+				        RemoteControlData data = WirelessRemoteControlClient.getData();
+				        if (data != null) {
+				            return WirelessRemoteControlClient.remoteGui.click(evt, data);
+				        }
+				    }
+
 					Entity riding = MinecraftClient.getPlayer().getRiding();
-					if (!(riding instanceof EntityRollingStock)) {
+					if (!(riding instanceof EntityRollingStock stock)) {
 						return true;
 					}
-					EntityRollingStock stock = (EntityRollingStock) riding;
-					if (stock.getDefinition().getOverlay() != null) {
+                    if (stock.getDefinition().getOverlay() != null) {
 						return stock.getDefinition().getOverlay().click(evt, stock);
 					}
 					return true;
@@ -255,6 +278,7 @@ public class ImmersiveRailroading extends ModCore.Mod {
 
 				ClientEvents.TICK.subscribe(GuiBuilder::onClientTick);
 				ClientEvents.TICK.subscribe(EntityRollingStockDefinition.ControlSoundsDefinition::cleanupStoppedSounds);
+				ClientEvents.TICK.subscribe(WirelessRemoteControlClient::onClientTick);
 
 				Particles.SMOKE = Particle.register(SmokeParticle::new, SmokeParticle::renderAll);
 

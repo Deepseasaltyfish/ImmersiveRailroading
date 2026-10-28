@@ -386,6 +386,7 @@ ir_keys.bell=Sound Bell
 ir_keys.dead_mans_switch=Deadman's Switch
 ir_keys.start_stop_engine=Start/Stop engine
 ir_keys.config=Config
+ir_keys.global_map=World Map
 
 # Default pack's train name
 immersiverailroading:entity.locomotives.a1_peppercorn=A1 Peppercorn

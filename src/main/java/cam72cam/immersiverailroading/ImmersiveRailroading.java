@@ -101,6 +101,7 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				Packet.register(AugmentFilterGUI.AugmentFilterChangePacket::new, PacketDirection.ClientToServer);
 				Packet.register(TrackRegionPacket::new, PacketDirection.ServerToClient);
 				Packet.register(TrackRegionDeltaPacket::new, PacketDirection.ServerToClient);
+				Packet.register(TrackRegionRequestPacket::new, PacketDirection.ClientToServer);
 
 				ServerChronoState.register();
 

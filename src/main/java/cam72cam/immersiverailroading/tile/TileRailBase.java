@@ -279,6 +279,9 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
 	}
 
 	public Vec3i getParentWithoutDamage() {
+		if (parent == null) {
+			return null;
+		}
 		return parentCache.get(parent);
 	}
 	

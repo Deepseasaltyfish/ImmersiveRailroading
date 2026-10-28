@@ -413,6 +413,7 @@ public class WorldData {
         removedPlayers.removeAll(players);
         for (Player removedPlayer : removedPlayers) {
             playerRegionMap.remove(removedPlayer);
+            playerMapViewRegions.remove(removedPlayer); // 【新增】
         }
 
         // 1. 首见全量 / 卸载空包
@@ -425,8 +426,29 @@ public class WorldData {
                     trackingRegions.add(vecToRegion(new Vec3i(player.getPosition()).add(x * 16, 0, z * 16)));
                 }
             }
+
+            // 【新增】：合并地图请求的 Region，并清理过期的
+            Map<Long, Integer> mapView = playerMapViewRegions.get(player);
+            if (mapView != null) {
+                trackingRegions.addAll(mapView.keySet());
+            }
+
+            // 处理移除：如果 sentRegions 里有，但 trackingRegions 里没了，发空包
+            Set<Long> leftRegions = new HashSet<>(sentRegions);
+            leftRegions.removeAll(trackingRegions);
+            for (Long leftRegion : leftRegions) {
+                sentRegions.remove(leftRegion);
+                new TrackRegionPacket(world, leftRegion, null).sendToPlayer(player);
+            }
+
             for (Long trackingRegion : trackingRegions) {
                 TrackRegion region = regions.get(trackingRegion);
+
+                // 【关键修复】：如果是地图请求的，且内存里没有，立即从磁盘加载！
+                if (region == null && mapView != null && mapView.containsKey(trackingRegion)) {
+                    ensureRegionLoaded(trackingRegion);
+                    region = regions.get(trackingRegion);
+                }
 
                 if (region == null) {
                     if (sentRegions.contains(trackingRegion)) {
@@ -536,6 +558,12 @@ public class WorldData {
 
         for (Player player : world.getEntities(Player.class)) {
             required.addAll(regionsInRadius(player.getPosition(), Config.ConfigRegion.playerRadius));
+
+            // 【新增】：把地图界面的请求也算作“需要”
+            Map<Long, Integer> mapView = playerMapViewRegions.get(player);
+            if (mapView != null) {
+                required.addAll(mapView.keySet());
+            }
         }
 
         for (VehicleRef ref : vehicleRefs.values()) {
@@ -1150,6 +1178,26 @@ public class WorldData {
         // 3. 唤醒邻居（不清邻居节点，只让邻居跑 searchAndAddGap 补 GAP 边）
         for (Map.Entry<Vec3i, TrackMultiGeometrySegment> e : region.trackBlocks.entrySet()) {
             researchNeighbors(region.toBlockPos(e.getKey()));
+        }
+    }
+
+    // 记录玩家地图界面的请求 <Player, <RegionId, 过期时间>>
+    private final Map<Player, Map<Long, Integer>> playerMapViewRegions = new HashMap<>();
+
+    public void handleClientMapRequest(Player player, List<Long> requestRegions) {
+        if (!world.isServer) return;
+
+        if (requestRegions == null || requestRegions.isEmpty()) {
+            // 客户端关闭地图，直接清理请求记录
+            playerMapViewRegions.remove(player);
+            return;
+        }
+
+        // 更新请求记录（不需要 serverTick 过期了，纯靠关闭包清理）
+        Map<Long, Integer> viewRegions = playerMapViewRegions.computeIfAbsent(player, p -> new HashMap<>());
+        viewRegions.clear();
+        for (Long id : requestRegions) {
+            viewRegions.put(id, 1); // 值随便填，只要存在就行
         }
     }
 }

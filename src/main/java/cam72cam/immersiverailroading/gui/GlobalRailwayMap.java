@@ -1,6 +1,7 @@
 package cam72cam.immersiverailroading.gui;
 
 import cam72cam.immersiverailroading.library.Gauge;
+import cam72cam.immersiverailroading.net.TrackRegionRequestPacket;
 import cam72cam.immersiverailroading.render.util.Color;
 import cam72cam.immersiverailroading.render.util.FlatCurveRenderer;
 import cam72cam.immersiverailroading.track.BuilderCubicCurve;
@@ -18,6 +19,8 @@ import cam72cam.mod.render.opengl.RenderState;
 import cam72cam.mod.world.World;
 import util.Matrix4;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +35,7 @@ public class GlobalRailwayMap implements IScreen {
     private static final Color COLOR_REGION     = new Color(1.00, 0.90, 0.20, 0.8);
     private static final Color COLOR_TRACK      = new Color(0.35, 0.90, 0.35, 1.0);
     private static final Color COLOR_TRACK_FB   = new Color(0.90, 0.60, 0.30, 1.0);
-    private static final int PLAYER_MARKER_COLOR = 0xFF4D99FF;
+    private static final Color COLOR_PLAYER     = new Color(0.30, 0.60, 1.00, 1.0);
 
     private double panX, panZ;
     private double zoom = 2.0;
@@ -50,6 +53,11 @@ public class GlobalRailwayMap implements IScreen {
     private double diagTrackMinX, diagTrackMaxX;
     private double diagTrackMinZ, diagTrackMaxZ;
 
+    // --- 请求控制 ---
+    private boolean needsRequest = false;
+    private long lastRequestTime = 0;
+    private List<Long> lastRequestedRegions = new ArrayList<>();
+
     // ================================================================
 
     @Override
@@ -65,6 +73,9 @@ public class GlobalRailwayMap implements IScreen {
 
         offsetCache.clear();
         collectDiagnostics();
+
+        // 刚打开时触发一次请求
+        needsRequest = true;
     }
 
     @Override
@@ -72,6 +83,11 @@ public class GlobalRailwayMap implements IScreen {
         if (currentInstance == this) currentInstance = null;
         dragging = false;
         offsetCache.clear();
+
+        // 通知服务端释放该玩家地图所请求的 Region
+        if (world != null) {
+            new TrackRegionRequestPacket(world, Collections.emptyList()).sendToServer();
+        }
     }
 
     private void collectDiagnostics() {
@@ -128,6 +144,7 @@ public class GlobalRailwayMap implements IScreen {
                 zoom = clamp(zoom * Math.pow(1.15, evt.scroll), 0.1, 64.0);
                 panX = worldXBefore - (evt.x - cx) / zoom;
                 panZ = worldZBefore - (evt.y - cy) / zoom;
+                needsRequest = true;
                 return false;
             }
             case CLICK: {
@@ -142,6 +159,7 @@ public class GlobalRailwayMap implements IScreen {
                 if (dragging) {
                     panX = dragStartPanX - (evt.x - dragStartScreenX) / zoom;
                     panZ = dragStartPanZ - (evt.y - dragStartScreenY) / zoom;
+                    needsRequest = true;
                     return false;
                 }
                 return true;
@@ -168,7 +186,7 @@ public class GlobalRailwayMap implements IScreen {
 
         GUIHelpers.drawRect(0, 0, width, height, 0xFF14141E);
 
-        // 关键修复：将屏幕中心设为 (0,0) 原点，这样 FlatCurveRenderer 画线就不会被屏幕左上角裁剪了
+        // 屏幕中心设为 (0,0) 原点
         RenderState mapState = state.clone().translate(width / 2.0, height / 2.0, 0);
 
         drawGrid(mapState, width, height);
@@ -177,8 +195,64 @@ public class GlobalRailwayMap implements IScreen {
             drawRegionsAndTracks(mapState, width, height);
         }
 
-        drawPlayerMarker(width, height);
+        drawPlayerMarker(mapState, width, height);
         drawHud(width, height);
+
+        // 处理网格/轨道视口请求
+        handleRequests();
+    }
+
+    private void handleRequests() {
+        if (!needsRequest) return;
+
+        long now = System.currentTimeMillis();
+        // 防抖：500ms 内最多请求一次
+        if (now - lastRequestTime < 500) return;
+
+        int width = GUIHelpers.getScreenWidth();
+        int height = GUIHelpers.getScreenHeight();
+
+        double halfW = (width / 2.0) / zoom;
+        double halfH = (height / 2.0) / zoom;
+
+        // 向外扩展一圈（大约 512 个方块，即一个 Region 的宽度）
+        double extend = 512;
+        int minX = (int) Math.floor(panX - halfW - extend);
+        int maxX = (int) Math.ceil(panX + halfW + extend);
+        int minZ = (int) Math.floor(panZ - halfH - extend);
+        int maxZ = (int) Math.ceil(panZ + halfH + extend);
+
+        int rxMin = minX >> 9;
+        int rxMax = maxX >> 9;
+        int rzMin = minZ >> 9;
+        int rzMax = maxZ >> 9;
+
+        // 安全限制：如果缩放到非常远，限制请求中心周围最多 15x15 个区块，防止撑爆网络
+        int limit = 7;
+        int centerRx = (int) panX >> 9;
+        int centerRz = (int) panZ >> 9;
+        rxMin = Math.max(rxMin, centerRx - limit);
+        rxMax = Math.min(rxMax, centerRx + limit);
+        rzMin = Math.max(rzMin, centerRz - limit);
+        rzMax = Math.min(rzMax, centerRz + limit);
+
+        List<Long> currentRegions = new ArrayList<>();
+        for (int x = rxMin; x <= rxMax; x++) {
+            for (int z = rzMin; z <= rzMax; z++) {
+                currentRegions.add(((long) x << 32) | (z & 0xFFFFFFFFL));
+            }
+        }
+
+        // 视口区域没变，或者已经发过了
+        if (currentRegions.equals(lastRequestedRegions)) {
+            needsRequest = false;
+            return;
+        }
+
+        lastRequestedRegions = currentRegions;
+        new TrackRegionRequestPacket(world, currentRegions).sendToServer();
+        lastRequestTime = now;
+        needsRequest = false;
     }
 
     private void drawGrid(RenderState state, int width, int height) {
@@ -195,28 +269,26 @@ public class GlobalRailwayMap implements IScreen {
             if (s * zoom >= 24) { spacing = s; break; }
         }
         double majorSpacing = spacing * 4;
-
-        // 传入的 yScale 统一传 -zoom，因为 FlatCurveRenderer 内部会对 yScale 取反，这样就能变成上北下南。
         double yScale = -zoom;
 
         double startX = Math.floor(minX / spacing) * spacing;
         for (double x = startX; x <= maxX; x += spacing) {
             if (Math.abs(x / majorSpacing - Math.round(x / majorSpacing)) < 1e-6) continue;
-            fr.drawLine(new Vec3d(x - panX, minZ - panZ, 0), new Vec3d(x - panX, maxZ - panZ, 0), COLOR_GRID, zoom, yScale, 1.0);
+            fr.drawLine(new Vec3d(x - panX, minZ - panZ, 0), new Vec3d(x - panX, maxZ - panZ, 0), COLOR_GRID, zoom, yScale, 0.5);
         }
         double startZ = Math.floor(minZ / spacing) * spacing;
         for (double z = startZ; z <= maxZ; z += spacing) {
             if (Math.abs(z / majorSpacing - Math.round(z / majorSpacing)) < 1e-6) continue;
-            fr.drawLine(new Vec3d(minX - panX, z - panZ, 0), new Vec3d(maxX - panX, z - panZ, 0), COLOR_GRID, zoom, yScale, 1.0);
+            fr.drawLine(new Vec3d(minX - panX, z - panZ, 0), new Vec3d(maxX - panX, z - panZ, 0), COLOR_GRID, zoom, yScale, 0.5);
         }
 
         startX = Math.floor(minX / majorSpacing) * majorSpacing;
         for (double x = startX; x <= maxX; x += majorSpacing) {
-            fr.drawLine(new Vec3d(x - panX, minZ - panZ, 0), new Vec3d(x - panX, maxZ - panZ, 0), COLOR_GRID_MAJOR, zoom, yScale, 1.5);
+            fr.drawLine(new Vec3d(x - panX, minZ - panZ, 0), new Vec3d(x - panX, maxZ - panZ, 0), COLOR_GRID_MAJOR, zoom, yScale, 1);
         }
         startZ = Math.floor(minZ / majorSpacing) * majorSpacing;
         for (double z = startZ; z <= maxZ; z += majorSpacing) {
-            fr.drawLine(new Vec3d(minX - panX, z - panZ, 0), new Vec3d(maxX - panX, z - panZ, 0), COLOR_GRID_MAJOR, zoom, yScale, 1.5);
+            fr.drawLine(new Vec3d(minX - panX, z - panZ, 0), new Vec3d(maxX - panX, z - panZ, 0), COLOR_GRID_MAJOR, zoom, yScale, 1);
         }
     }
 
@@ -241,10 +313,10 @@ public class GlobalRailwayMap implements IScreen {
 
             if (rMaxX < minX || rMinX > maxX || rMaxZ < minZ || rMinZ > maxZ) continue;
 
-            fr.drawLine(new Vec3d(rMinX - panX, rMinZ - panZ, 0), new Vec3d(rMaxX - panX, rMinZ - panZ, 0), COLOR_REGION, zoom, yScale, 2.0);
-            fr.drawLine(new Vec3d(rMaxX - panX, rMinZ - panZ, 0), new Vec3d(rMaxX - panX, rMaxZ - panZ, 0), COLOR_REGION, zoom, yScale, 2.0);
-            fr.drawLine(new Vec3d(rMaxX - panX, rMaxZ - panZ, 0), new Vec3d(rMinX - panX, rMaxZ - panZ, 0), COLOR_REGION, zoom, yScale, 2.0);
-            fr.drawLine(new Vec3d(rMinX - panX, rMaxZ - panZ, 0), new Vec3d(rMinX - panX, rMinZ - panZ, 0), COLOR_REGION, zoom, yScale, 2.0);
+            fr.drawLine(new Vec3d(rMinX - panX, rMinZ - panZ, 0), new Vec3d(rMaxX - panX, rMinZ - panZ, 0), COLOR_REGION, zoom, yScale, 1.0);
+            fr.drawLine(new Vec3d(rMaxX - panX, rMinZ - panZ, 0), new Vec3d(rMaxX - panX, rMaxZ - panZ, 0), COLOR_REGION, zoom, yScale, 1.0);
+            fr.drawLine(new Vec3d(rMaxX - panX, rMaxZ - panZ, 0), new Vec3d(rMinX - panX, rMaxZ - panZ, 0), COLOR_REGION, zoom, yScale, 1.0);
+            fr.drawLine(new Vec3d(rMinX - panX, rMaxZ - panZ, 0), new Vec3d(rMinX - panX, rMinZ - panZ, 0), COLOR_REGION, zoom, yScale, 1.0);
         }
 
         // 轨道
@@ -278,7 +350,7 @@ public class GlobalRailwayMap implements IScreen {
                 double ax = a.x + ox, az = a.z + oz;
                 double bx = b.x + ox, bz = b.z + oz;
                 if (!segmentVisible(ax, az, bx, bz, minX, maxX, minZ, maxZ)) continue;
-                fr.drawLine(new Vec3d(ax - panX, az - panZ, 0), new Vec3d(bx - panX, bz - panZ, 0), COLOR_TRACK, zoom, yScale, 2.5);
+                fr.drawLine(new Vec3d(ax - panX, az - panZ, 0), new Vec3d(bx - panX, bz - panZ, 0), COLOR_TRACK, zoom, yScale, 1);
             }
             return;
         }
@@ -300,7 +372,7 @@ public class GlobalRailwayMap implements IScreen {
                 double ax = prev.x + ox, az = prev.z + oz;
                 double bx = curr.x + ox, bz = curr.z + oz;
                 if (segmentVisible(ax, az, bx, bz, minX, maxX, minZ, maxZ)) {
-                    fr.drawLine(new Vec3d(ax - panX, az - panZ, 0), new Vec3d(bx - panX, bz - panZ, 0), COLOR_TRACK_FB, zoom, yScale, 2.5);
+                    fr.drawLine(new Vec3d(ax - panX, az - panZ, 0), new Vec3d(bx - panX, bz - panZ, 0), COLOR_TRACK_FB, zoom, yScale, 1);
                 }
                 prev = curr;
             }
@@ -316,19 +388,38 @@ public class GlobalRailwayMap implements IScreen {
         }
     }
 
-    // ---- 玩家点 ----
-    private void drawPlayerMarker(int width, int height) {
+    private void drawPlayerMarker(RenderState state, int width, int height) {
         Vec3d p = MinecraftClient.getPlayer().getPosition();
-        double dx = (p.x - panX) * zoom;
-        double dy = (p.z - panZ) * zoom;
+        double dx = p.x - panX;
+        double dy = p.z - panZ;
+        double size = 4;
+        double lineWidth = 1;
 
-        // drawRect 绝对坐标，左上角为 0,0
-        int left = (int)(width / 2.0 + dx - 4);
-        int top  = (int)(height / 2.0 + dy - 4);
-        GUIHelpers.drawRect(left, top, 8, 8, PLAYER_MARKER_COLOR);
+        double w = size / zoom;
+        double h = -size / zoom;
+        double yScale = -zoom;
+
+        Vec3d top    = new Vec3d(dx,      dy + h, 0);
+        Vec3d right  = new Vec3d(dx + w,  dy,      0);
+        Vec3d bottom = new Vec3d(dx,      dy - h, 0);
+        Vec3d left   = new Vec3d(dx - w,  dy,      0);
+
+        FlatCurveRenderer fr = new FlatCurveRenderer(state, null);
+
+        drawExtendedLine(fr, top, right, lineWidth, zoom, yScale);
+        drawExtendedLine(fr, right, bottom, lineWidth, zoom, yScale);
+        drawExtendedLine(fr, bottom, left, lineWidth, zoom, yScale);
+        drawExtendedLine(fr, left, top, lineWidth, zoom, yScale);
     }
 
-    // ---- HUD ----
+    private void drawExtendedLine(FlatCurveRenderer fr, Vec3d start, Vec3d end, double lineWidth, double xScale, double yScale) {
+        Vec3d dir = end.subtract(start).normalize();
+        double extLen = (lineWidth / 2.0) / Math.abs(xScale);
+        Vec3d extStart = start.subtract(dir.scale(extLen));
+        Vec3d extEnd = end.add(dir.scale(extLen));
+        fr.drawLine(extStart, extEnd, COLOR_PLAYER, xScale, yScale, lineWidth);
+    }
+
     private void drawHud(int width, int height) {
         Vec3d p = MinecraftClient.getPlayer().getPosition();
         Matrix4 m = new Matrix4();

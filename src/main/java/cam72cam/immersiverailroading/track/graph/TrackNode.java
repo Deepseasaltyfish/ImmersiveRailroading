@@ -6,6 +6,7 @@ import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -65,7 +66,7 @@ public class TrackNode {
                     List<Vec3i> parents = data.getParentsAt(scan);
                     if (parents == null) continue;
 
-                    for (Vec3i parentPos : parents) {
+                    for (Vec3i parentPos : new ArrayList<>(parents)) { // we have to copy to avoid CME!
                         if (parentPos.equals(selfBlock)) continue;
 
                         TrackMultiGeometrySegment trackBlock = data.getTrackBlock(parentPos);

@@ -1205,4 +1205,26 @@ public class WorldData {
             viewRegions.put(id, 1); // 值随便填，只要存在就行
         }
     }
+
+    // 供地图渲染使用的纯坐标缓存
+    public List<Vec3d> clientMapVehicles = new ArrayList<>();
+
+    public void updateClientVehicles(List<Vec3d> vehicles) {
+        this.clientMapVehicles.clear();
+        this.clientMapVehicles.addAll(vehicles);
+    }
+
+    public void handleVehicleRequest(Player player, int minX, int minZ, int maxX, int maxZ) {
+        if (!world.isServer) return;
+
+        List<Vec3d> found = new ArrayList<>();
+        // 这里为了稳妥，可以查 EntityMoveableRollingStock（或 EntityRollingStock）
+        for (cam72cam.mod.entity.Entity e : world.getEntities(cam72cam.immersiverailroading.entity.EntityMoveableRollingStock.class)) {
+            Vec3d pos = e.getPosition();
+            if (pos.x >= minX && pos.x <= maxX && pos.z >= minZ && pos.z <= maxZ) {
+                found.add(pos);
+            }
+        }
+        new cam72cam.immersiverailroading.net.VehicleSyncPacket(world, found).sendToPlayer(player);
+    }
 }

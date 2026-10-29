@@ -109,6 +109,8 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				Packet.register(TrackRegionPacket::new, PacketDirection.ServerToClient);
 				Packet.register(TrackRegionDeltaPacket::new, PacketDirection.ServerToClient);
 				Packet.register(TrackRegionRequestPacket::new, PacketDirection.ClientToServer);
+				Packet.register(VehicleRequestPacket::new, PacketDirection.ClientToServer);
+				Packet.register(VehicleSyncPacket::new, PacketDirection.ServerToClient);
 
 				ServerChronoState.register();
 				WirelessRemoteControlServer.init();
@@ -294,6 +296,7 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				ClientEvents.TICK.subscribe(GuiBuilder::onClientTick);
 				ClientEvents.TICK.subscribe(EntityRollingStockDefinition.ControlSoundsDefinition::cleanupStoppedSounds);
 				ClientEvents.TICK.subscribe(WirelessRemoteControlClient::onClientTick);
+				ClientEvents.TICK.subscribe(GlobalRailwayMap::onClientTick);
 
 				Particles.SMOKE = Particle.register(SmokeParticle::new, SmokeParticle::renderAll);
 

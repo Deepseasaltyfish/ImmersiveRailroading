@@ -2,6 +2,7 @@ package cam72cam.immersiverailroading.gui;
 
 import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.net.TrackRegionRequestPacket;
+import cam72cam.immersiverailroading.net.VehicleRequestPacket;
 import cam72cam.immersiverailroading.render.util.Color;
 import cam72cam.immersiverailroading.render.util.FlatCurveRenderer;
 import cam72cam.immersiverailroading.track.BuilderCubicCurve;
@@ -36,6 +37,7 @@ public class GlobalRailwayMap implements IScreen {
     private static final Color COLOR_TRACK      = new Color(0.35, 0.90, 0.35, 1.0);
     private static final Color COLOR_TRACK_FB   = new Color(0.90, 0.60, 0.30, 1.0);
     private static final Color COLOR_PLAYER     = new Color(0.30, 0.60, 1.00, 1.0);
+    private static final Color COLOR_VEHICLE    = new Color(1.00, 0.30, 0.30, 1.0); // 红色车辆
 
     private double panX, panZ;
     private double zoom = 2.0;
@@ -48,15 +50,10 @@ public class GlobalRailwayMap implements IScreen {
     private World world;
 
     private final Map<TrackSingleGeometrySegment, Vec3d> offsetCache = new HashMap<>();
-
     private int diagRegionCount, diagTrackCount, diagPointCount, diagNullCacheCount;
-    private double diagTrackMinX, diagTrackMaxX;
-    private double diagTrackMinZ, diagTrackMaxZ;
+    private double diagTrackMinX, diagTrackMaxX, diagTrackMinZ, diagTrackMaxZ;
 
-    // --- 请求控制 ---
-    private boolean needsRequest = false;
-    private long lastRequestTime = 0;
-    private List<Long> lastRequestedRegions = new ArrayList<>();
+    private int tickCounter = 0;
 
     // ================================================================
 
@@ -73,9 +70,7 @@ public class GlobalRailwayMap implements IScreen {
 
         offsetCache.clear();
         collectDiagnostics();
-
-        // 刚打开时触发一次请求
-        needsRequest = true;
+        tickCounter = 0; // 立即触发一次
     }
 
     @Override
@@ -83,10 +78,100 @@ public class GlobalRailwayMap implements IScreen {
         if (currentInstance == this) currentInstance = null;
         dragging = false;
         offsetCache.clear();
-
-        // 通知服务端释放该玩家地图所请求的 Region
         if (world != null) {
             new TrackRegionRequestPacket(world, Collections.emptyList()).sendToServer();
+        }
+    }
+
+    public static void onClientTick() {
+        if (currentInstance != null) {
+            currentInstance.tick();
+        }
+    }
+
+    private void tick() {
+        tickCounter++;
+        if (tickCounter >= 20) { // 每 1 秒请求一次
+            tickCounter = 0;
+            sendViewportRequests();
+        }
+    }
+
+    private void sendViewportRequests() {
+        int width = GUIHelpers.getScreenWidth();
+        int height = GUIHelpers.getScreenHeight();
+        double halfW = (width / 2.0) / zoom;
+        double halfH = (height / 2.0) / zoom;
+
+        int minX = (int) Math.floor(panX - halfW - 512);
+        int maxX = (int) Math.ceil(panX + halfW + 512);
+        int minZ = (int) Math.floor(panZ - halfH - 512);
+        int maxZ = (int) Math.ceil(panZ + halfH + 512);
+
+        // 1. 请求 Region 全量
+        int rxMin = minX >> 9, rxMax = maxX >> 9, rzMin = minZ >> 9, rzMax = maxZ >> 9;
+        int limit = 7;
+        int centerRx = (int) panX >> 9, centerRz = (int) panZ >> 9;
+        rxMin = Math.max(rxMin, centerRx - limit); rxMax = Math.min(rxMax, centerRx + limit);
+        rzMin = Math.max(rzMin, centerRz - limit); rzMax = Math.min(rzMax, centerRz + limit);
+
+        List<Long> currentRegions = new ArrayList<>();
+        for (int x = rxMin; x <= rxMax; x++) {
+            for (int z = rzMin; z <= rzMax; z++) {
+                currentRegions.add(((long) x << 32) | (z & 0xFFFFFFFFL));
+            }
+        }
+        new TrackRegionRequestPacket(world, currentRegions).sendToServer();
+
+        // 2. 请求视口内的车辆数据
+        new VehicleRequestPacket(world, minX, minZ, maxX, maxZ).sendToServer();
+    }
+
+    @Override
+    public void draw(IScreenBuilder builder, RenderState state) {
+        int width  = GUIHelpers.getScreenWidth();
+        int height = GUIHelpers.getScreenHeight();
+
+        GUIHelpers.drawRect(0, 0, width, height, 0xFF14141E);
+
+        RenderState mapState = state.clone().translate(width / 2.0, height / 2.0, 0);
+
+        drawGrid(mapState, width, height);
+        if (data != null) {
+            drawRegionsAndTracks(mapState, width, height);
+            drawVehicles(mapState, width, height); // 绘制车辆
+        }
+        drawPlayerMarker(mapState, width, height);
+        drawHud(width, height);
+    }
+
+    // 绘制车辆
+    private void drawVehicles(RenderState state, int width, int height) {
+        if (data.clientMapVehicles == null || data.clientMapVehicles.isEmpty()) return;
+
+        FlatCurveRenderer fr = new FlatCurveRenderer(state, null);
+        double yScale = -zoom;
+
+        for (Vec3d pos : data.clientMapVehicles) {
+            double dx = pos.x - panX;
+            double dz = pos.z - panZ;
+
+            // 剔除屏幕外的车辆
+            if (Math.abs(dx) > (width / 2.0) / zoom + 10 || Math.abs(dz) > (height / 2.0) / zoom + 10) continue;
+
+            double size = 4.0;
+            double w = size / zoom;
+            double h = -size / zoom;
+
+            Vec3d top    = new Vec3d(dx,      dz + h, 0);
+            Vec3d right  = new Vec3d(dx + w,  dz,     0);
+            Vec3d bottom = new Vec3d(dx,      dz - h, 0);
+            Vec3d left   = new Vec3d(dx - w,  dz,     0);
+
+            drawExtendedLine(fr, top, right, 1.0, zoom, yScale, COLOR_VEHICLE);
+            drawExtendedLine(fr, right, bottom, 1.0, zoom, yScale, COLOR_VEHICLE);
+            drawExtendedLine(fr, bottom, left, 1.0, zoom, yScale, COLOR_VEHICLE);
+            drawExtendedLine(fr, left, top, 1.0, zoom, yScale, COLOR_VEHICLE);
         }
     }
 
@@ -95,14 +180,10 @@ public class GlobalRailwayMap implements IScreen {
         diagTrackCount = 0;
         diagPointCount = 0;
         diagNullCacheCount = 0;
-
-        diagTrackMinX = Double.MAX_VALUE;
-        diagTrackMinZ = Double.MAX_VALUE;
-        diagTrackMaxX = -Double.MAX_VALUE;
-        diagTrackMaxZ = -Double.MAX_VALUE;
+        diagTrackMinX = Double.MAX_VALUE; diagTrackMinZ = Double.MAX_VALUE;
+        diagTrackMaxX = -Double.MAX_VALUE; diagTrackMaxZ = -Double.MAX_VALUE;
 
         if (data == null) return;
-
         diagRegionCount = data.regions.size();
         for (TrackRegion region : data.regions.values()) {
             for (TrackMultiGeometrySegment seg : region.trackBlocks.values()) {
@@ -110,26 +191,16 @@ public class GlobalRailwayMap implements IScreen {
                     for (TrackSingleGeometrySegment single : branch.values()) {
                         diagTrackCount++;
                         Vec3i bp = single.getBlockPos();
-                        diagTrackMinX = Math.min(diagTrackMinX, bp.x);
-                        diagTrackMaxX = Math.max(diagTrackMaxX, bp.x);
-                        diagTrackMinZ = Math.min(diagTrackMinZ, bp.z);
-                        diagTrackMaxZ = Math.max(diagTrackMaxZ, bp.z);
-
+                        diagTrackMinX = Math.min(diagTrackMinX, bp.x); diagTrackMaxX = Math.max(diagTrackMaxX, bp.x);
+                        diagTrackMinZ = Math.min(diagTrackMinZ, bp.z); diagTrackMaxZ = Math.max(diagTrackMaxZ, bp.z);
                         List<VecYPR> points = single.pointsCache;
-                        if (points == null || points.size() < 2) {
-                            diagNullCacheCount++;
-                        } else {
-                            diagPointCount += points.size();
-                        }
+                        if (points == null || points.size() < 2) diagNullCacheCount++;
+                        else diagPointCount += points.size();
                     }
                 }
             }
         }
     }
-
-    // ================================================================
-    // 鼠标事件
-    // ================================================================
 
     public boolean handleMouse(ClientEvents.MouseGuiEvent evt) {
         int width  = GUIHelpers.getScreenWidth();
@@ -144,120 +215,32 @@ public class GlobalRailwayMap implements IScreen {
                 zoom = clamp(zoom * Math.pow(1.15, evt.scroll), 0.1, 64.0);
                 panX = worldXBefore - (evt.x - cx) / zoom;
                 panZ = worldZBefore - (evt.y - cy) / zoom;
-                needsRequest = true;
                 return false;
             }
             case CLICK: {
                 dragging = true;
-                dragStartScreenX = evt.x;
-                dragStartScreenY = evt.y;
-                dragStartPanX = panX;
-                dragStartPanZ = panZ;
+                dragStartScreenX = evt.x; dragStartScreenY = evt.y;
+                dragStartPanX = panX; dragStartPanZ = panZ;
                 return false;
             }
             case MOVE: {
                 if (dragging) {
                     panX = dragStartPanX - (evt.x - dragStartScreenX) / zoom;
                     panZ = dragStartPanZ - (evt.y - dragStartScreenY) / zoom;
-                    needsRequest = true;
                     return false;
                 }
                 return true;
             }
             case RELEASE: {
-                if (dragging) {
-                    dragging = false;
-                    return false;
-                }
+                if (dragging) { dragging = false; return false; }
                 return true;
             }
         }
         return true;
     }
 
-    // ================================================================
-    // 绘制
-    // ================================================================
-
-    @Override
-    public void draw(IScreenBuilder builder, RenderState state) {
-        int width  = GUIHelpers.getScreenWidth();
-        int height = GUIHelpers.getScreenHeight();
-
-        GUIHelpers.drawRect(0, 0, width, height, 0xFF14141E);
-
-        // 屏幕中心设为 (0,0) 原点
-        RenderState mapState = state.clone().translate(width / 2.0, height / 2.0, 0);
-
-        drawGrid(mapState, width, height);
-
-        if (data != null) {
-            drawRegionsAndTracks(mapState, width, height);
-        }
-
-        drawPlayerMarker(mapState, width, height);
-        drawHud(width, height);
-
-        // 处理网格/轨道视口请求
-        handleRequests();
-    }
-
-    private void handleRequests() {
-        if (!needsRequest) return;
-
-        long now = System.currentTimeMillis();
-        // 防抖：500ms 内最多请求一次
-        if (now - lastRequestTime < 500) return;
-
-        int width = GUIHelpers.getScreenWidth();
-        int height = GUIHelpers.getScreenHeight();
-
-        double halfW = (width / 2.0) / zoom;
-        double halfH = (height / 2.0) / zoom;
-
-        // 向外扩展一圈（大约 512 个方块，即一个 Region 的宽度）
-        double extend = 512;
-        int minX = (int) Math.floor(panX - halfW - extend);
-        int maxX = (int) Math.ceil(panX + halfW + extend);
-        int minZ = (int) Math.floor(panZ - halfH - extend);
-        int maxZ = (int) Math.ceil(panZ + halfH + extend);
-
-        int rxMin = minX >> 9;
-        int rxMax = maxX >> 9;
-        int rzMin = minZ >> 9;
-        int rzMax = maxZ >> 9;
-
-        // 安全限制：如果缩放到非常远，限制请求中心周围最多 15x15 个区块，防止撑爆网络
-        int limit = 7;
-        int centerRx = (int) panX >> 9;
-        int centerRz = (int) panZ >> 9;
-        rxMin = Math.max(rxMin, centerRx - limit);
-        rxMax = Math.min(rxMax, centerRx + limit);
-        rzMin = Math.max(rzMin, centerRz - limit);
-        rzMax = Math.min(rzMax, centerRz + limit);
-
-        List<Long> currentRegions = new ArrayList<>();
-        for (int x = rxMin; x <= rxMax; x++) {
-            for (int z = rzMin; z <= rzMax; z++) {
-                currentRegions.add(((long) x << 32) | (z & 0xFFFFFFFFL));
-            }
-        }
-
-        // 视口区域没变，或者已经发过了
-        if (currentRegions.equals(lastRequestedRegions)) {
-            needsRequest = false;
-            return;
-        }
-
-        lastRequestedRegions = currentRegions;
-        new TrackRegionRequestPacket(world, currentRegions).sendToServer();
-        lastRequestTime = now;
-        needsRequest = false;
-    }
-
     private void drawGrid(RenderState state, int width, int height) {
         FlatCurveRenderer fr = new FlatCurveRenderer(state, null);
-
         double halfW = (width / 2.0) / zoom;
         double halfH = (height / 2.0) / zoom;
         double minX = panX - halfW, maxX = panX + halfW;
@@ -265,9 +248,7 @@ public class GlobalRailwayMap implements IScreen {
 
         double[] spacings = {1, 4, 16, 64, 256, 1024};
         double spacing = spacings[spacings.length - 1];
-        for (double s : spacings) {
-            if (s * zoom >= 24) { spacing = s; break; }
-        }
+        for (double s : spacings) { if (s * zoom >= 24) { spacing = s; break; } }
         double majorSpacing = spacing * 4;
         double yScale = -zoom;
 
@@ -294,32 +275,25 @@ public class GlobalRailwayMap implements IScreen {
 
     private void drawRegionsAndTracks(RenderState state, int width, int height) {
         FlatCurveRenderer fr = new FlatCurveRenderer(state, null);
-
         double halfW = (width / 2.0) / zoom;
         double halfH = (height / 2.0) / zoom;
         double minX = panX - halfW, maxX = panX + halfW;
         double minZ = panZ - halfH, maxZ = panZ + halfH;
         double yScale = -zoom;
 
-        // Region 边框
         for (Map.Entry<Long, TrackRegion> entry : data.regions.entrySet()) {
             long regionId = entry.getKey();
             int rx = TrackRegionUtil.regionX(regionId);
             int rz = TrackRegionUtil.regionZ(regionId);
-            int rMinX = rx << 9;
-            int rMinZ = rz << 9;
-            int rMaxX = rMinX + 512;
-            int rMaxZ = rMinZ + 512;
-
+            int rMinX = rx << 9; int rMinZ = rz << 9;
+            int rMaxX = rMinX + 512; int rMaxZ = rMinZ + 512;
             if (rMaxX < minX || rMinX > maxX || rMaxZ < minZ || rMinZ > maxZ) continue;
-
             fr.drawLine(new Vec3d(rMinX - panX, rMinZ - panZ, 0), new Vec3d(rMaxX - panX, rMinZ - panZ, 0), COLOR_REGION, zoom, yScale, 1.0);
             fr.drawLine(new Vec3d(rMaxX - panX, rMinZ - panZ, 0), new Vec3d(rMaxX - panX, rMaxZ - panZ, 0), COLOR_REGION, zoom, yScale, 1.0);
             fr.drawLine(new Vec3d(rMaxX - panX, rMaxZ - panZ, 0), new Vec3d(rMinX - panX, rMaxZ - panZ, 0), COLOR_REGION, zoom, yScale, 1.0);
             fr.drawLine(new Vec3d(rMinX - panX, rMaxZ - panZ, 0), new Vec3d(rMinX - panX, rMinZ - panZ, 0), COLOR_REGION, zoom, yScale, 1.0);
         }
 
-        // 轨道
         for (TrackRegion region : data.regions.values()) {
             for (TrackMultiGeometrySegment segment : region.trackBlocks.values()) {
                 for (Map<Gauge, TrackSingleGeometrySegment> branch : segment.paths) {
@@ -345,10 +319,8 @@ public class GlobalRailwayMap implements IScreen {
             }
             double ox = offset.x, oz = offset.z;
             for (int i = 0; i < points.size() - 1; i++) {
-                VecYPR a = points.get(i);
-                VecYPR b = points.get(i + 1);
-                double ax = a.x + ox, az = a.z + oz;
-                double bx = b.x + ox, bz = b.z + oz;
+                VecYPR a = points.get(i); VecYPR b = points.get(i + 1);
+                double ax = a.x + ox, az = a.z + oz; double bx = b.x + ox, bz = b.z + oz;
                 if (!segmentVisible(ax, az, bx, bz, minX, maxX, minZ, maxZ)) continue;
                 fr.drawLine(new Vec3d(ax - panX, az - panZ, 0), new Vec3d(bx - panX, bz - panZ, 0), COLOR_TRACK, zoom, yScale, 1);
             }
@@ -363,14 +335,12 @@ public class GlobalRailwayMap implements IScreen {
             }
             CubicCurve curve = builder.getCurve();
             if (curve == null) return;
-
             double ox = offset.x, oz = offset.z;
             final int N = 32;
             Vec3d prev = curve.position(0);
             for (int i = 1; i <= N; i++) {
                 Vec3d curr = curve.position((double) i / N);
-                double ax = prev.x + ox, az = prev.z + oz;
-                double bx = curr.x + ox, bz = curr.z + oz;
+                double ax = prev.x + ox, az = prev.z + oz; double bx = curr.x + ox, bz = curr.z + oz;
                 if (segmentVisible(ax, az, bx, bz, minX, maxX, minZ, maxZ)) {
                     fr.drawLine(new Vec3d(ax - panX, az - panZ, 0), new Vec3d(bx - panX, bz - panZ, 0), COLOR_TRACK_FB, zoom, yScale, 1);
                 }
@@ -390,78 +360,46 @@ public class GlobalRailwayMap implements IScreen {
 
     private void drawPlayerMarker(RenderState state, int width, int height) {
         Vec3d p = MinecraftClient.getPlayer().getPosition();
-        double dx = p.x - panX;
-        double dy = p.z - panZ;
-        double size = 4;
-        double lineWidth = 1;
+        double dx = p.x - panX, dy = p.z - panZ;
+        double size = 4, lineWidth = 1;
+        double w = size / zoom, h = -size / zoom, yScale = -zoom;
 
-        double w = size / zoom;
-        double h = -size / zoom;
-        double yScale = -zoom;
-
-        Vec3d top    = new Vec3d(dx,      dy + h, 0);
-        Vec3d right  = new Vec3d(dx + w,  dy,      0);
-        Vec3d bottom = new Vec3d(dx,      dy - h, 0);
-        Vec3d left   = new Vec3d(dx - w,  dy,      0);
+        Vec3d top = new Vec3d(dx, dy + h, 0), right = new Vec3d(dx + w, dy, 0);
+        Vec3d bottom = new Vec3d(dx, dy - h, 0), left = new Vec3d(dx - w, dy, 0);
 
         FlatCurveRenderer fr = new FlatCurveRenderer(state, null);
-
-        drawExtendedLine(fr, top, right, lineWidth, zoom, yScale);
-        drawExtendedLine(fr, right, bottom, lineWidth, zoom, yScale);
-        drawExtendedLine(fr, bottom, left, lineWidth, zoom, yScale);
-        drawExtendedLine(fr, left, top, lineWidth, zoom, yScale);
+        drawExtendedLine(fr, top, right, lineWidth, zoom, yScale, COLOR_PLAYER);
+        drawExtendedLine(fr, right, bottom, lineWidth, zoom, yScale, COLOR_PLAYER);
+        drawExtendedLine(fr, bottom, left, lineWidth, zoom, yScale, COLOR_PLAYER);
+        drawExtendedLine(fr, left, top, lineWidth, zoom, yScale, COLOR_PLAYER);
     }
 
-    private void drawExtendedLine(FlatCurveRenderer fr, Vec3d start, Vec3d end, double lineWidth, double xScale, double yScale) {
+    private void drawExtendedLine(FlatCurveRenderer fr, Vec3d start, Vec3d end, double lineWidth, double xScale, double yScale, Color color) {
         Vec3d dir = end.subtract(start).normalize();
         double extLen = (lineWidth / 2.0) / Math.abs(xScale);
-        Vec3d extStart = start.subtract(dir.scale(extLen));
-        Vec3d extEnd = end.add(dir.scale(extLen));
-        fr.drawLine(extStart, extEnd, COLOR_PLAYER, xScale, yScale, lineWidth);
+        fr.drawLine(start.subtract(dir.scale(extLen)), end.add(dir.scale(extLen)), color, xScale, yScale, lineWidth);
     }
 
     private void drawHud(int width, int height) {
         Vec3d p = MinecraftClient.getPlayer().getPosition();
         Matrix4 m = new Matrix4();
-
         int y = 10;
-        GUIHelpers.drawCenteredString(String.format("Zoom: %.2fx", zoom),
-                width / 2, y, 0xFFFFFFFF, m); y += 14;
-        GUIHelpers.drawCenteredString(
-                String.format("Center: %d, %d   Player: %d, %d",
-                        (int) panX, (int) panZ, (int) p.x, (int) p.z),
-                width / 2, y, 0xFFFFFFFF, m); y += 14;
-
-        GUIHelpers.drawCenteredString(
-                String.format("Regions=%d  Tracks=%d  Points=%d  NullCache=%d",
-                        diagRegionCount, diagTrackCount, diagPointCount, diagNullCacheCount),
-                width / 2, y, 0xFFFFFF80, m); y += 14;
-
+        GUIHelpers.drawCenteredString(String.format("Zoom: %.2fx", zoom), width / 2, y, 0xFFFFFFFF, m); y += 14;
+        GUIHelpers.drawCenteredString(String.format("Center: %d, %d   Player: %d, %d", (int) panX, (int) panZ, (int) p.x, (int) p.z), width / 2, y, 0xFFFFFFFF, m); y += 14;
+        GUIHelpers.drawCenteredString(String.format("Regions=%d  Tracks=%d  Points=%d  NullCache=%d", diagRegionCount, diagTrackCount, diagPointCount, diagNullCacheCount), width / 2, y, 0xFFFFFF80, m); y += 14;
         if (diagTrackCount > 0) {
-            GUIHelpers.drawCenteredString(
-                    String.format("TrackBBox: X[%d,%d] Z[%d,%d]",
-                            (int) diagTrackMinX, (int) diagTrackMaxX,
-                            (int) diagTrackMinZ, (int) diagTrackMaxZ),
-                    width / 2, y, 0xFFFFFF80, m);
+            GUIHelpers.drawCenteredString(String.format("TrackBBox: X[%d,%d] Z[%d,%d]", (int) diagTrackMinX, (int) diagTrackMaxX, (int) diagTrackMinZ, (int) diagTrackMaxZ), width / 2, y, 0xFFFFFF80, m);
         } else {
-            GUIHelpers.drawCenteredString(
-                    "No track data on client yet",
-                    width / 2, y, 0xFFFF6060, m);
+            GUIHelpers.drawCenteredString("No track data on client yet", width / 2, y, 0xFFFF6060, m);
         }
-
-        GUIHelpers.drawCenteredString(
-                "Scroll = zoom   Drag = pan   ESC = close",
-                width / 2, height - 16, 0xFFA0A0A0, m);
+        GUIHelpers.drawCenteredString("Scroll = zoom   Drag = pan   ESC = close", width / 2, height - 16, 0xFFA0A0A0, m);
     }
 
-    private boolean segmentVisible(double wx1, double wz1, double wx2, double wz2,
-                                   double minX, double maxX, double minZ, double maxZ) {
+    private boolean segmentVisible(double wx1, double wz1, double wx2, double wz2, double minX, double maxX, double minZ, double maxZ) {
         double sMinX = Math.min(wx1, wx2), sMaxX = Math.max(wx1, wx2);
         double sMinZ = Math.min(wz1, wz2), sMaxZ = Math.max(wz1, wz2);
         return !(sMaxX < minX || sMinX > maxX || sMaxZ < minZ || sMinZ > maxZ);
     }
 
-    private static double clamp(double v, double lo, double hi) {
-        return v < lo ? lo : (v > hi ? hi : v);
-    }
+    private static double clamp(double v, double lo, double hi) { return v < lo ? lo : (v > hi ? hi : v); }
 }

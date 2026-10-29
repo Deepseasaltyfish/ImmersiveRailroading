@@ -474,7 +474,7 @@ public class OffWorldMovementTrack {
         TrackNode to = data.nodes.get(edge.to);
         if (from == null || to == null) return -1;
 
-        double maxDist = Math.max(1.0, from.trackSingleGeometrySegment.gauge.value() * 0.5);
+        double maxDist = Math.max(1.0, from.trackSingleGeometrySegment.gauge.value() * 2);
         double maxDistSq = maxDist * maxDist;
 
         if (edge.edgeType == TrackEdge.EdgeType.GAP) {

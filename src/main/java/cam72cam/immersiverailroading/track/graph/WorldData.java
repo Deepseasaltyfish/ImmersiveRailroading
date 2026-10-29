@@ -662,7 +662,12 @@ public class WorldData {
 
         clearTopologyInRegion(r);
 
-        trackBlockParentsByRegion.remove(r);
+        // 只移除本 region 内 parent 的所有占位索引；
+        // 其他 region 的 parent 跨越到本 region 的占位索引必须保留，否则 region 重载后跨 region 索引丢失
+        for (Map.Entry<Vec3i, TrackMultiGeometrySegment> e : region.trackBlocks.entrySet()) {
+            Vec3i parentAbs = region.toBlockPos(e.getKey());
+            removeTrackBlockFromParents(parentAbs, e.getValue());
+        }
 
         // 该 region 已卸载，丢弃积压的增量与兜底请求，避免发给已不在追踪集合的客户端
         synchronized (pendingDeltas) {

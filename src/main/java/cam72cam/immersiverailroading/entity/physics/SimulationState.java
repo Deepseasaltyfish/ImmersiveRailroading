@@ -409,14 +409,12 @@ public class SimulationState {
                 roll = -roll;
             }
 
-            // 【修改 1】：在吸附前，提前保存真实的物理位置作为基准
             Vec3d beforeFront = positionFront;
             Vec3d beforeRear = positionRear;
 
             IRPathingData nextFront = new IRPathingData(config.world, positionFront, rollFront);
             IRPathingData nextRear = new IRPathingData(config.world, positionRear, rollRear);
 
-            // 吸附（为了拓扑推演）
             if (lastFrontEdge != null) {
                 double t = OffWorldMovementTrack.projectOntoEdge(lastFrontEdge, positionFront, config.world);
                 if (t >= 0) nextFront.advanceTo(lastFrontEdge, t, rollFront);
@@ -432,12 +430,13 @@ public class SimulationState {
             Vec3d nextFrontPos = nextFront.getUMCPos();
             Vec3d nextRearPos = nextRear.getUMCPos();
 
-            // 【修改 2】：计算真实的移动距离平方
             double frontMoveSq = nextFrontPos.distanceToSquared(beforeFront);
             double rearMoveSq = nextRearPos.distanceToSquared(beforeRear);
 
-            // 【修改 3】：拦截极微小位移（幻影位移），防止算出极不稳定的角度
-            if (frontMoveSq > 1e-6 || rearMoveSq > 1e-6) {
+            // 【修复1：位移极灵敏，防止反向卡死】只要位移 > 1e-12，必须更新位置和轨道继承
+            if (frontMoveSq > 1e-12 || rearMoveSq > 1e-12) {
+
+                // 【修复2：姿态高防抖】只有单边位移大于约 1 毫米（1e-6），才重算角度，防止切向抖动
                 if (frontMoveSq > 1e-6) {
                     yawFront = VecUtil.toWrongYaw(nextFrontPos.subtract(beforeFront));
                     rollFront = (float) -nextFront.getRoll();
@@ -453,11 +452,11 @@ public class SimulationState {
 
                 Vec3d bogeyDelta = nextFrontPos.subtract(nextRearPos);
 
-                // 【修改 4】：防止车体中心重叠导致 bogeyDelta 变零向量引发 yaw 乱飘
-                if (bogeyDelta.lengthSquared() > 1e-4) {
+                if (bogeyDelta.lengthSquared() > 1e-6) {
                     yaw = VecUtil.toWrongYaw(bogeyDelta);
                     pitch = (float) Math.toDegrees(FastMath.atan2(bogeyDelta.y, nextRearPos.distanceTo(nextFrontPos)));
                 }
+
                 roll = (float) Simulation.calculateRoll(rollFront, rollRear);
                 position = position.add(deltaCenter);
 
@@ -468,7 +467,7 @@ public class SimulationState {
                     rollRear = roll;
                 }
 
-                // 【修改 5】：只有确认位移有效，才覆盖 lastEdge 状态
+                // 无论多微小，只要发生了移动，继承拓扑边，防止脱轨
                 lastFrontEdge = nextFront.getTopoEdge();
                 lastFrontT = nextFront.getTopoT();
                 lastRearEdge = nextRear.getTopoEdge();

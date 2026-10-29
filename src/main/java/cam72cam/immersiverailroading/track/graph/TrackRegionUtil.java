@@ -9,10 +9,7 @@ import net.jpountz.lz4.LZ4Compressor;
 import net.jpountz.lz4.LZ4Factory;
 import net.jpountz.lz4.LZ4FastDecompressor;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -45,25 +42,39 @@ public class TrackRegionUtil {
         }
     }
     static ByteBuffer readBuffer(File file) throws IOException {
-        try (FileInputStream is = new FileInputStream(file)){
-            try (FileChannel channel = is.getChannel()) {
-                LZ4Factory factory = LZ4Factory.fastestInstance();
-                LZ4FastDecompressor decompressor = factory.fastDecompressor();
+        try (FileInputStream is = new FileInputStream(file)) {
+            LZ4Factory factory = LZ4Factory.fastestInstance();
+            LZ4FastDecompressor decompressor = factory.fastDecompressor();
 
-                // Memmap the file (per javadoc, hooks into GC cleanup)
-                MappedByteBuffer raw = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
+            // 1) 读 decompressed 长度
+            byte[] header = new byte[Integer.BYTES];
+            readFully(is, header);
+            int decompressedBytes = ByteBuffer.wrap(header).getInt();
 
-                // Read number of input bytes
-                int decompressedBytes = raw.getInt();//todo 中途崩溃文件损坏？
-                // Buffer to hold the decompressed data
-                ByteBuffer decompressed = ByteBuffer.allocate(decompressedBytes);
-
-                // Perform the decompression and move the head to the beginning of the buffer
-                decompressor.decompress(raw, decompressed);
-                decompressed.position(0);
-
-                return decompressed;
+            // 2) 读全部压缩数据
+            int compressedLen = (int) file.length() - Integer.BYTES;
+            if (compressedLen < 0) {
+                throw new IOException("Truncated region file: " + file);
             }
+            byte[] compressed = new byte[compressedLen];
+            readFully(is, compressed);
+
+            // 3) 解压
+            ByteBuffer decompressed = ByteBuffer.allocate(decompressedBytes);
+            decompressor.decompress(ByteBuffer.wrap(compressed), decompressed);
+            decompressed.position(0);
+            return decompressed;
+        }
+    }
+
+    private static void readFully(InputStream is, byte[] dst) throws IOException {
+        int off = 0;
+        while (off < dst.length) {
+            int r = is.read(dst, off, dst.length - off);
+            if (r < 0) {
+                throw new IOException("Unexpected EOF");
+            }
+            off += r;
         }
     }
 

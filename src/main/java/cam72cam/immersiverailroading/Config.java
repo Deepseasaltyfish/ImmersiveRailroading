@@ -298,6 +298,9 @@ public class Config {
 		@Comment("Train will run without chunk loading")
 		public static boolean offWorldPathing = false;
 
+		@Comment("Enable offline entity pool to save chunks (requires game restart for full effect)")
+		public static boolean enableEntityPool = true;
+
 		@Comment("Break blueprint preview block after building it")
 		public static boolean breakTilePreview = true;
 

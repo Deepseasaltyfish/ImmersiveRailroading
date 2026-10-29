@@ -1,5 +1,6 @@
 package cam72cam.immersiverailroading.entity;
 
+import cam72cam.immersiverailroading.Config;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.mod.ModCore;
 import cam72cam.mod.entity.ModdedEntity;
@@ -31,6 +32,7 @@ public class VehiclePersistence {
     /** 挂到 CommonEvents.WorldData.SAVE */
     public static void save(World world, File levelDirectory) {
         if (!world.isServer) return;
+        if (!Config.ConfigDebug.enableEntityPool) return; // 新增
 
         OfflineEntityPool pool = OfflineEntityPool.get(world);
         Map<UUID, TagCompound> snapshot = new HashMap<>();
@@ -57,6 +59,7 @@ public class VehiclePersistence {
     /** 挂到 CommonEvents.WorldData.LOAD */
     public static void load(World world, File levelDirectory) {
         if (!world.isServer) return;
+        if (!Config.ConfigDebug.enableEntityPool) return; // 新增
 
         File file = fileFor(levelDirectory, world);
         if (!file.exists()) return;

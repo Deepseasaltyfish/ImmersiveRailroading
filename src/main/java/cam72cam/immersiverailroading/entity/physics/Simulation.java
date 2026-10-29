@@ -97,11 +97,14 @@ public class Simulation {
             int lastCount = loaded == null ? 0 : loaded.size();
             loaded = world.getEntities(EntityCoupleableRollingStock.class);
             // 合并池里的离线车辆
-            OfflineEntityPool pool = OfflineEntityPool.get(world);
-            for (EntityCoupleableRollingStock stock : pool.getAllRollingStock()) {
-                if (!stock.internal.addedToChunk && !stock.internal.isDead) {
-                    if (!loaded.contains(stock)) {
-                        loaded.add(stock);
+            // 原来这里直接合并池子里的车
+            if (Config.ConfigDebug.enableEntityPool) {
+                OfflineEntityPool pool = OfflineEntityPool.get(world);
+                for (EntityCoupleableRollingStock stock : pool.getAllRollingStock()) {
+                    if (!stock.internal.addedToChunk && !stock.internal.isDead) {
+                        if (!loaded.contains(stock)) {
+                            loaded.add(stock);
+                        }
                     }
                 }
             }

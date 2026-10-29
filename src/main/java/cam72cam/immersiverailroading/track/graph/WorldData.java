@@ -926,6 +926,21 @@ public class WorldData {
             TrackSingleGeometrySegment toSeg = toNode.trackSingleGeometrySegment;
             edge.coveringRegions.add(TrackRegionUtil.vecToRegion(toSeg.absPos));
             edge.coveringRegions.add(TrackRegionUtil.vecToRegion(toSeg.parentAbsPos));
+
+            // 比较极端的情况：GAP 边中间穿过的 region 也加入覆盖，避免 initCurrent 在长 GAP 中点吸附失败
+            Vec3d fp = new Vec3d(fromNode.point.x, fromNode.point.y, fromNode.point.z);
+            Vec3d tp = new Vec3d(toNode.point.x,   toNode.point.y,   toNode.point.z);
+            double len = fp.distanceTo(tp);
+            int steps = Math.max(1, (int) Math.ceil(len / 8.0));
+            for (int i = 0; i <= steps; i++) {
+                double t = (double) i / steps;
+                Vec3i sample = new Vec3i(
+                        fp.x + (tp.x - fp.x) * t,
+                        fp.y + (tp.y - fp.y) * t,
+                        fp.z + (tp.z - fp.z) * t
+                );
+                edge.coveringRegions.add(TrackRegionUtil.vecToRegion(sample));
+            }
         }
 
         for (long r : edge.coveringRegions) {
@@ -1210,6 +1225,7 @@ public class WorldData {
     public List<Vec3d> clientMapVehicles = new ArrayList<>();
 
     public void updateClientVehicles(List<Vec3d> vehicles) {
+        if (!world.isClient) return;
         this.clientMapVehicles.clear();
         this.clientMapVehicles.addAll(vehicles);
     }
@@ -1219,10 +1235,9 @@ public class WorldData {
 
         List<Vec3d> found = new ArrayList<>();
         // 这里为了稳妥，可以查 EntityMoveableRollingStock（或 EntityRollingStock）
-        for (cam72cam.mod.entity.Entity e : world.getEntities(cam72cam.immersiverailroading.entity.EntityMoveableRollingStock.class)) {
-            Vec3d pos = e.getPosition();
-            if (pos.x >= minX && pos.x <= maxX && pos.z >= minZ && pos.z <= maxZ) {
-                found.add(pos);
+        for (VehicleRef ref : vehicleRefs.values()) {
+            if (ref.pos.x >= minX && ref.pos.x <= maxX && ref.pos.z >= minZ && ref.pos.z <= maxZ) {
+                found.add(ref.pos);
             }
         }
         new cam72cam.immersiverailroading.net.VehicleSyncPacket(world, found).sendToPlayer(player);

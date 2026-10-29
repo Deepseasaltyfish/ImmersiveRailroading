@@ -1,5 +1,6 @@
 package cam72cam.immersiverailroading.entity;
 
+import cam72cam.immersiverailroading.Config;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.mod.ModCore;
 import cam72cam.mod.entity.CustomEntity;
@@ -90,6 +91,8 @@ public class OfflineEntityPool {
         });
 
         World.registerOfflineEntityLookup(uuid -> {
+            if (!Config.ConfigDebug.enableEntityPool) return null;
+
             for (OfflineEntityPool pool : INSTANCES.values()) {
                 ModdedEntity e = pool.all.get(uuid);
                 if (e != null) {
@@ -112,13 +115,37 @@ public class OfflineEntityPool {
 
     private static void onWorldTick(World w) {
         if (!w.isServer) return;
+
+        if (!Config.ConfigDebug.enableEntityPool) {
+            OfflineEntityPool pool = INSTANCES.get(w);
+            if (pool != null) pool.flushAndDisable();
+            return;
+        }
+
         OfflineEntityPool pool = INSTANCES.get(w);
         if (pool != null) pool.tick();
+    }
+
+    public void flushAndDisable() {
+        if (all.isEmpty()) return;
+        ImmersiveRailroading.info("[POOL] Disabling pool, flushing %d vehicles back to world...", all.size());
+        for (ModdedEntity e : new ArrayList<>(all.values())) {
+            e.isDead = false;
+            if (!e.addedToChunk) {
+                // spawnEntity 会触发 onEntityAdded，但因为池里还有它，不会重复
+                world.internal.spawnEntity(e);
+            }
+        }
+        all.clear();
+        activelyDespawning.clear();
+        ImmersiveRailroading.info("[POOL] Flush complete.");
     }
 
     // ───────────────────────── 池操作 ─────────────────────────
 
     private void add(ModdedEntity e) {
+        if (!Config.ConfigDebug.enableEntityPool) return;
+
         UUID uuid = e.getPersistentID();
         ModdedEntity existing = all.put(uuid, e);
         if (existing == e) return;  // 重复 add，不打印
@@ -130,12 +157,16 @@ public class OfflineEntityPool {
     }
 
     private void remove(UUID uuid) {
+        if (!Config.ConfigDebug.enableEntityPool) return;
+
         if (all.remove(uuid) != null) {
             log("remove %s (size=%d)", uuid, all.size());
         }
     }
 
     private void tick() {
+        if (!Config.ConfigDebug.enableEntityPool) return;
+
         // 1. 手动 tick 所有离线实体
         for (ModdedEntity e : all.values()) {
             if (!e.addedToChunk && !e.isDead) {
@@ -225,11 +256,15 @@ public class OfflineEntityPool {
     }
 
     public ModdedEntity getEntity(UUID uuid) {
+        if (!Config.ConfigDebug.enableEntityPool) return null;
+
         return all.get(uuid);
     }
 
     /** 供 Simulation 用：在线 + 离线全部编组车辆 */
     public List<EntityCoupleableRollingStock> getAllRollingStock() {
+        if (!Config.ConfigDebug.enableEntityPool) return Collections.emptyList();
+
         return all.values().stream()
                 .map(ModdedEntity::getSelf)
                 .filter(s -> s instanceof EntityCoupleableRollingStock)

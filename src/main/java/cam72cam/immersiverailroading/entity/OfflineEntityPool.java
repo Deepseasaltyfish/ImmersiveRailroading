@@ -126,14 +126,24 @@ public class OfflineEntityPool {
         if (pool != null) pool.tick();
     }
 
+    // todo 需要注意的是，不再池子开启的时候放置的车是不会主动进池子的，目前没加专门的机制把他们捞进来
     public void flushAndDisable() {
         if (all.isEmpty()) return;
         ImmersiveRailroading.info("[POOL] Disabling pool, flushing %d vehicles back to world...", all.size());
         for (ModdedEntity e : new ArrayList<>(all.values())) {
             e.isDead = false;
             if (!e.addedToChunk) {
-                // spawnEntity 会触发 onEntityAdded，但因为池里还有它，不会重复
-                world.internal.spawnEntity(e);
+                // 1. 原生同步加载区块，确保实体有地方落座
+                e.world.getChunk(e.chunkCoordX, e.chunkCoordZ);
+
+                // 2. 顺手向 ChunkManager 申请 2 秒的强加载，防止它塞进去后光速被卸载
+                cam72cam.mod.world.World wrappedWorld = cam72cam.mod.world.World.get(e.world);
+                if (wrappedWorld != null) {
+                    wrappedWorld.keepLoaded(new cam72cam.mod.math.Vec3i(e.chunkCoordX << 4, 0, e.chunkCoordZ << 4));
+                }
+
+                // 3. 塞进世界，触发 tracker.join 和 chunk.entityLists
+                e.world.spawnEntity(e);
             }
         }
         all.clear();

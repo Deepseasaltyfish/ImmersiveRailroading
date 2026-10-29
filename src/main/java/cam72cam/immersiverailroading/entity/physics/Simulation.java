@@ -3,12 +3,13 @@ package cam72cam.immersiverailroading.entity.physics;
 import cam72cam.immersiverailroading.Config;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.entity.EntityCoupleableRollingStock;
-import cam72cam.immersiverailroading.entity.OfflineEntityPool;
 import cam72cam.immersiverailroading.entity.physics.chrono.ChronoState;
 import cam72cam.immersiverailroading.entity.physics.chrono.ServerChronoState;
 import cam72cam.immersiverailroading.net.MRSSyncPacket;
 import cam72cam.immersiverailroading.physics.TickPos;
 import cam72cam.immersiverailroading.track.graph.WorldData;
+import cam72cam.mod.entity.EntityPool;
+import cam72cam.mod.entity.ModdedEntity;
 import cam72cam.mod.entity.Player;
 import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
@@ -99,8 +100,14 @@ public class Simulation {
             // 合并池里的离线车辆
             // 原来这里直接合并池子里的车
             if (Config.ConfigDebug.enableEntityPool) {
-                OfflineEntityPool pool = OfflineEntityPool.get(world);
-                for (EntityCoupleableRollingStock stock : pool.getAllRollingStock()) {
+                List<EntityCoupleableRollingStock> offlinePool = EntityPool.get(world).getAllEntities().stream()
+                        .map(ModdedEntity::getSelf)
+                        .filter(Objects::nonNull) // 确保 self 已初始化
+                        .filter(s -> s instanceof EntityCoupleableRollingStock)
+                        .map(s -> (EntityCoupleableRollingStock) s)
+                        .collect(Collectors.toList());
+
+                for (EntityCoupleableRollingStock stock : offlinePool) {
                     if (!stock.internal.addedToChunk && !stock.internal.isDead) {
                         if (!loaded.contains(stock)) {
                             loaded.add(stock);

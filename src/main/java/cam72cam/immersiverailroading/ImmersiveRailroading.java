@@ -34,6 +34,7 @@ import cam72cam.mod.MinecraftClient;
 import cam72cam.mod.ModCore;
 import cam72cam.mod.ModEvent;
 import cam72cam.mod.config.ConfigFile;
+import cam72cam.mod.entity.CustomEntity;
 import cam72cam.mod.entity.Entity;
 import cam72cam.mod.entity.EntityRegistry;
 import cam72cam.mod.entity.Player;
@@ -116,7 +117,33 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				Packet.register(VehicleSyncPacket::new, PacketDirection.ServerToClient);
 
 				ServerChronoState.register();
-				OfflineEntityPool.register();
+				cam72cam.mod.entity.EntityPool.register(new cam72cam.mod.entity.IEntityPoolPolicy() {
+					@Override
+					public boolean isEnabled() {
+						return Config.ConfigDebug.enableEntityPool;
+					}
+
+					@Override
+					public boolean shouldPool(CustomEntity self) {
+						// 只有 IR 的车才进池子
+						return self instanceof EntityCoupleableRollingStock;
+					}
+
+					@Override
+					public double getSpawnDistanceSq() {
+						return 128.0 * 128.0;
+					}
+
+					@Override
+					public double getDespawnDistanceSq() {
+						return 128.0 * 128.0;
+					}
+
+					@Override
+					public int getProximityInterval() {
+						return 20;
+					}
+				});
 				WirelessRemoteControlServer.init();
 
 				IRBlocks.register();

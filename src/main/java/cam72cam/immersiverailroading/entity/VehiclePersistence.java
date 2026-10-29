@@ -3,6 +3,7 @@ package cam72cam.immersiverailroading.entity;
 import cam72cam.immersiverailroading.Config;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.mod.ModCore;
+import cam72cam.mod.entity.EntityPool;
 import cam72cam.mod.entity.ModdedEntity;
 import cam72cam.mod.serialization.TagCompound;
 import cam72cam.mod.world.World;
@@ -43,7 +44,7 @@ public class VehiclePersistence {
         if (!world.isServer) return;
         if (!Config.ConfigDebug.enableEntityPool) return;
 
-        OfflineEntityPool pool = OfflineEntityPool.get(world);
+        EntityPool pool = EntityPool.get(world);
         File dir = dirFor(levelDirectory, world);
 
         int bucketCount = Math.max(1, Config.ConfigDebug.vehicleBucketCount); // 安全保护
@@ -111,7 +112,7 @@ public class VehiclePersistence {
         File dir = dirFor(levelDirectory, world);
         if (!dir.exists()) return;
 
-        OfflineEntityPool pool = OfflineEntityPool.get(world);
+        EntityPool pool = EntityPool.get(world);
         int restored = 0, skipped = 0;
         int loadedFiles = 0;
 

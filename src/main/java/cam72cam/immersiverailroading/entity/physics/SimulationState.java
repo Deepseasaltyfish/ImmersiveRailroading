@@ -269,6 +269,7 @@ public class SimulationState {
             IRPathingData front = new IRPathingData(config.world, positionFront, 0);
             IRPathingData rear = new IRPathingData(config.world, positionRear, 0);
 
+            // 1. 先尝试吸附到已知轨道
             if (lastFrontEdge != null) {
                 double t = OffWorldMovementTrack.projectOntoEdge(lastFrontEdge, positionFront, config.world);
                 if (t >= 0) front.advanceTo(lastFrontEdge, t, 0);
@@ -278,11 +279,31 @@ public class SimulationState {
                 if (t >= 0) rear.advanceTo(lastRearEdge, t, 0);
             }
 
-            OffWorldMovementTrack.getNextPosition(front, couplerVecFront, config.gauge.value(), config.world);
-            OffWorldMovementTrack.getNextPosition(rear, couplerVecRear, config.gauge.value(), config.world);
+            // 【修复】：在推演前，记录吸附后的基准点
+            Vec3d beforeFront = front.getUMCPos();
+            Vec3d beforeRear = rear.getUMCPos();
 
-            couplerPositionFront = front.getUMCPos();
-            couplerPositionRear = rear.getUMCPos();
+            // 2. 顺着轨道推演车钩位置
+            if (front.getTopoEdge() != null) {
+                OffWorldMovementTrack.getNextPosition(front, couplerVecFront, config.gauge.value(), config.world);
+                couplerPositionFront = front.getUMCPos();
+            }
+            if (rear.getTopoEdge() != null) {
+                OffWorldMovementTrack.getNextPosition(rear, couplerVecRear, config.gauge.value(), config.world);
+                couplerPositionRear = rear.getUMCPos();
+            }
+
+            // 3. 计算推演产生的实际位移
+            double frontMovedSq = front.getTopoEdge() != null ? couplerPositionFront.distanceToSquared(beforeFront) : 0;
+            double rearMovedSq = rear.getTopoEdge() != null ? couplerPositionRear.distanceToSquared(beforeRear) : 0;
+
+            // 【修复后的判断】：如果没有继承到拓扑，或者推演几乎没有产生位移（小于极微小阈值），走几何兜底
+            if (front.getTopoEdge() == null || frontMovedSq < 1e-6) {
+                couplerPositionFront = position.add(VecUtil.fromWrongYaw(config.couplerDistanceFront, yaw));
+            }
+            if (rear.getTopoEdge() == null || rearMovedSq < 1e-6) {
+                couplerPositionRear = position.add(VecUtil.fromWrongYaw(config.couplerDistanceRear, yaw));
+            }
 
             return;
         }
@@ -388,12 +409,14 @@ public class SimulationState {
                 roll = -roll;
             }
 
+            // 【修改 1】：在吸附前，提前保存真实的物理位置作为基准
+            Vec3d beforeFront = positionFront;
+            Vec3d beforeRear = positionRear;
+
             IRPathingData nextFront = new IRPathingData(config.world, positionFront, rollFront);
             IRPathingData nextRear = new IRPathingData(config.world, positionRear, rollRear);
 
-            Vec3d beforeFront = nextFront.getUMCPos();
-            Vec3d beforeRear = nextRear.getUMCPos();
-
+            // 吸附（为了拓扑推演）
             if (lastFrontEdge != null) {
                 double t = OffWorldMovementTrack.projectOntoEdge(lastFrontEdge, positionFront, config.world);
                 if (t >= 0) nextFront.advanceTo(lastFrontEdge, t, rollFront);
@@ -409,33 +432,47 @@ public class SimulationState {
             Vec3d nextFrontPos = nextFront.getUMCPos();
             Vec3d nextRearPos = nextRear.getUMCPos();
 
-            if (!nextFrontPos.equals(beforeFront) || !nextRearPos.equals(beforeRear)) {
-                yawFront = VecUtil.toWrongYaw(nextFrontPos.subtract(beforeFront));
-                yawRear = VecUtil.toWrongYaw(nextRearPos.subtract(beforeRear));
-                rollFront = (float) -nextFront.getRoll();
-                rollRear = (float) -nextRear.getRoll();
+            // 【修改 2】：计算真实的移动距离平方
+            double frontMoveSq = nextFrontPos.distanceToSquared(beforeFront);
+            double rearMoveSq = nextRearPos.distanceToSquared(beforeRear);
+
+            // 【修改 3】：拦截极微小位移（幻影位移），防止算出极不稳定的角度
+            if (frontMoveSq > 1e-6 || rearMoveSq > 1e-6) {
+                if (frontMoveSq > 1e-6) {
+                    yawFront = VecUtil.toWrongYaw(nextFrontPos.subtract(beforeFront));
+                    rollFront = (float) -nextFront.getRoll();
+                }
+                if (rearMoveSq > 1e-6) {
+                    yawRear = VecUtil.toWrongYaw(nextRearPos.subtract(beforeRear));
+                    rollRear = (float) -nextRear.getRoll();
+                }
 
                 Vec3d deltaCenter = nextFrontPos.subtract(position).scale(config.offsetRear)
                         .subtract(nextRearPos.subtract(position).scale(config.offsetFront))
                         .scale(-1/(config.offsetFront-config.offsetRear));
 
                 Vec3d bogeyDelta = nextFrontPos.subtract(nextRearPos);
-                yaw = VecUtil.toWrongYaw(bogeyDelta);
+
+                // 【修改 4】：防止车体中心重叠导致 bogeyDelta 变零向量引发 yaw 乱飘
+                if (bogeyDelta.lengthSquared() > 1e-4) {
+                    yaw = VecUtil.toWrongYaw(bogeyDelta);
+                    pitch = (float) Math.toDegrees(FastMath.atan2(bogeyDelta.y, nextRearPos.distanceTo(nextFrontPos)));
+                }
                 roll = (float) Simulation.calculateRoll(rollFront, rollRear);
-                pitch = (float) Math.toDegrees(FastMath.atan2(bogeyDelta.y, nextRearPos.distanceTo(nextFrontPos)));
                 position = position.add(deltaCenter);
 
-                if (Math.abs(distance) < 1e-6) { // is this strong?
+                if (Math.abs(distance) < 1e-6) {
                     yawFront = yaw;
                     yawRear = yaw;
                     rollFront = roll;
                     rollRear = roll;
-                } else {
-                    yawFront = VecUtil.toWrongYaw(nextFrontPos.subtract(beforeFront));
-                    yawRear = VecUtil.toWrongYaw(nextRearPos.subtract(beforeRear));
-                    rollFront = (float) -nextFront.getRoll();
-                    rollRear = (float) -nextRear.getRoll();
                 }
+
+                // 【修改 5】：只有确认位移有效，才覆盖 lastEdge 状态
+                lastFrontEdge = nextFront.getTopoEdge();
+                lastFrontT = nextFront.getTopoT();
+                lastRearEdge = nextRear.getTopoEdge();
+                lastRearT = nextRear.getTopoT();
             }
 
             if (isReversed) {
@@ -452,11 +489,6 @@ public class SimulationState {
                 rollFront = roll;
                 rollRear = roll;
             }
-
-            lastFrontEdge = nextFront.getTopoEdge();
-            lastFrontT = nextFront.getTopoT();
-            lastRearEdge = nextRear.getTopoEdge();
-            lastRearT = nextRear.getTopoT();
         } else {
             ITrack trackFront = MovementTrack.findTrack(config.world, positionFront, yawFront, config.gauge.value());
             ITrack trackRear = MovementTrack.findTrack(config.world, positionRear, yawRear, config.gauge.value());

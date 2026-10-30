@@ -1,6 +1,7 @@
 package cam72cam.immersiverailroading.gui;
 
 import cam72cam.immersiverailroading.library.Gauge;
+import cam72cam.immersiverailroading.library.GuiText;
 import cam72cam.immersiverailroading.library.SwitchState;
 import cam72cam.immersiverailroading.library.TrackItems;
 import cam72cam.immersiverailroading.net.offline.SwitchChangePacket;
@@ -172,23 +173,35 @@ public class GlobalRailwayMap implements IScreen {
         int sx = (int) (width / 2.0 + (pos.x - panX) * zoom);
         int sy = (int) (height / 2.0 + (pos.z - panZ) * zoom);
 
-        int btnX = sx + 15;
+        // 按钮布局：第一个按钮在 sx+15，第二个在第一个右边+4，关闭按钮在第二个右边+4
         int btnY = sy - 15;
-        int btnW = 70;
+        int btnW = 70; // 保持第一个按钮的宽度
         int btnH = 16;
+        int gap = 4;
         int closeW = 16;
 
-        // 使用 lastMouseX/Y 判断悬停
-        boolean hoverSwitchBtn = lastMouseX >= btnX && lastMouseX <= btnX + btnW && lastMouseY >= btnY && lastMouseY <= btnY + btnH;
-        GUIHelpers.drawRect(btnX, btnY, btnW, btnH, hoverSwitchBtn ? COLOR_BTN_HOVER : COLOR_BTN_BG);
+        int btn1X = sx + 15;
+        int btn2X = btn1X + btnW + gap;
+        int closeX = btn2X + btnW + gap;
 
-        String stateText = selectedSwitch.getSwitchStateEnum().toString();
         Matrix4 m = new Matrix4();
-        GUIHelpers.drawCenteredString(stateText, btnX + btnW / 2, btnY + 4, COLOR_BTN_TEXT, m);
+        String currentStateStr = selectedSwitch.getSwitchStateEnum().toString();
 
-        int closeX = btnX + btnW + 4;
-        boolean hoverCloseBtn = lastMouseX >= closeX && lastMouseX <= closeX + closeW && lastMouseY >= btnY && lastMouseY <= btnY + btnH;
-        GUIHelpers.drawRect(closeX, btnY, closeW, btnH, hoverCloseBtn ? COLOR_BTN_CLOSE_HOVER : COLOR_BTN_CLOSE);
+        // 1. 第一个按钮 (Offline / 内存切换)
+        boolean hoverBtn1 = lastMouseX >= btn1X && lastMouseX <= btn1X + btnW && lastMouseY >= btnY && lastMouseY <= btnY + btnH;
+        GUIHelpers.drawRect(btn1X, btnY, btnW, btnH, hoverBtn1 ? COLOR_BTN_HOVER : COLOR_BTN_BG);
+        String text1 = GuiText.GLOBAL_TRACK_MAP_SWITCHSTATE_OFFLINE.toString(currentStateStr);
+        GUIHelpers.drawCenteredString(text1, btn1X + btnW / 2, btnY + 4, COLOR_BTN_TEXT, m);
+
+        // 2. 第二个按钮 (ByBlock / 实体强制切换)
+        boolean hoverBtn2 = lastMouseX >= btn2X && lastMouseX <= btn2X + btnW && lastMouseY >= btnY && lastMouseY <= btnY + btnH;
+        GUIHelpers.drawRect(btn2X, btnY, btnW, btnH, hoverBtn2 ? COLOR_BTN_HOVER : COLOR_BTN_BG);
+        String text2 = GuiText.GLOBAL_TRACK_MAP_SWITCHSTATE_BYBLOCK.toString(currentStateStr);
+        GUIHelpers.drawCenteredString(text2, btn2X + btnW / 2, btnY + 4, COLOR_BTN_TEXT, m);
+
+        // 3. 关闭按钮
+        boolean hoverClose = lastMouseX >= closeX && lastMouseX <= closeX + closeW && lastMouseY >= btnY && lastMouseY <= btnY + btnH;
+        GUIHelpers.drawRect(closeX, btnY, closeW, btnH, hoverClose ? COLOR_BTN_CLOSE_HOVER : COLOR_BTN_CLOSE);
         GUIHelpers.drawCenteredString("X", closeX + closeW / 2, btnY + 4, COLOR_BTN_TEXT, m);
     }
 
@@ -236,30 +249,40 @@ public class GlobalRailwayMap implements IScreen {
                 return false;
             }
             case CLICK: {
-                // 判断左键
                 boolean isLeftClick = (evt.button == 0);
 
-                // 1. 优先处理道岔 UI 按钮点击
+                // 优先处理道岔 UI 按钮点击
                 if (selectedSwitch != null && isLeftClick) {
+                    // 关闭按钮
                     if (isMouseInCloseBtn(evt.x, evt.y)) {
                         selectedSwitch = null;
                         return false;
                     }
+
+                    // 第一个按钮：内存切换 (online = false)
                     if (isMouseInSwitchBtn(evt.x, evt.y)) {
                         SwitchState target = selectedSwitch.circleSwitchState();
+                        selectedSwitch.updateSwitchSate(target); // 客户端立即更新
+                        new SwitchChangePacket(world, selectedSwitch.getBlockPos(), target, false).sendToServer();
+                        return false;
+                    }
+
+                    // 第二个按钮：实体强制切换 (online = true)
+                    if (isMouseInSyncBtn(evt.x, evt.y)) {
+                        SwitchState target = selectedSwitch.circleSwitchState();
                         selectedSwitch.updateSwitchSate(target);
-                        new SwitchChangePacket(world, selectedSwitch.getBlockPos(), target).sendToServer();
+                        new SwitchChangePacket(world, selectedSwitch.getBlockPos(), target, true).sendToServer();
                         return false;
                     }
                 }
 
-                // 2. 选中道岔
+                // 2. 处理点击选中道岔
                 if (hoveredSwitch != null && isLeftClick) {
                     selectedSwitch = hoveredSwitch;
                     return false;
                 }
 
-                // 3. 拖拽地图
+                // 3. 否则进入地图拖拽
                 if (isLeftClick) {
                     selectedSwitch = null;
                     dragging = true;
@@ -338,13 +361,25 @@ public class GlobalRailwayMap implements IScreen {
         return mx >= btnX && mx <= btnX + 70 && my >= btnY && my <= btnY + 16;
     }
 
+    private boolean isMouseInSyncBtn(int mx, int my) {
+        if (selectedSwitch == null) return false;
+        int width = GUIHelpers.getScreenWidth(), height = GUIHelpers.getScreenHeight();
+        Vec3i pos = selectedSwitch.getBlockPos();
+        int sx = (int) (width / 2.0 + (pos.x - panX) * zoom);
+        int sy = (int) (height / 2.0 + (pos.z - panZ) * zoom);
+        int btn2X = sx + 15 + 70 + 4;
+        int btnY = sy - 15;
+        return mx >= btn2X && mx <= btn2X + 70 && my >= btnY && my <= btnY + 16;
+    }
+
     private boolean isMouseInCloseBtn(int mx, int my) {
         if (selectedSwitch == null) return false;
         int width = GUIHelpers.getScreenWidth(), height = GUIHelpers.getScreenHeight();
         Vec3i pos = selectedSwitch.getBlockPos();
         int sx = (int) (width / 2.0 + (pos.x - panX) * zoom);
         int sy = (int) (height / 2.0 + (pos.z - panZ) * zoom);
-        int closeX = sx + 15 + 70 + 4, btnY = sy - 15;
+        int closeX = sx + 15 + 70 + 4 + 70 + 4;
+        int btnY = sy - 15;
         return mx >= closeX && mx <= closeX + 16 && my >= btnY && my <= btnY + 16;
     }
 

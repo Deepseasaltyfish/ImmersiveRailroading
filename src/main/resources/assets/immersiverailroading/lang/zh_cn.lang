@@ -196,6 +196,9 @@ gui.immersiverailroading:label.excluded_tag=排除的标签：
 gui.immersiverailroading:overlay.on=开
 gui.immersiverailroading:overlay.off=关
 
+gui.immersiverailroading:global_track_map.switchstate.byblock=通过方块: %s
+gui.immersiverailroading:global_track_map.switchstate.offline=离线: %s
+
 immersiverailroading:gauge.brunel=布鲁内尔轨
 immersiverailroading:gauge.standard=标准轨
 immersiverailroading:gauge.narrow=窄轨

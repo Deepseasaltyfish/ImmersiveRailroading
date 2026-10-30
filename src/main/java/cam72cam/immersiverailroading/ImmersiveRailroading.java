@@ -34,10 +34,7 @@ import cam72cam.mod.MinecraftClient;
 import cam72cam.mod.ModCore;
 import cam72cam.mod.ModEvent;
 import cam72cam.mod.config.ConfigFile;
-import cam72cam.mod.entity.CustomEntity;
-import cam72cam.mod.entity.Entity;
-import cam72cam.mod.entity.EntityRegistry;
-import cam72cam.mod.entity.Player;
+import cam72cam.mod.entity.*;
 import cam72cam.mod.event.ClientEvents;
 import cam72cam.mod.event.CommonEvents;
 import cam72cam.mod.input.Keyboard;
@@ -142,6 +139,14 @@ public class ImmersiveRailroading extends ModCore.Mod {
 					@Override
 					public int getProximityInterval() {
 						return 20;
+					}
+
+					@Override
+					public void onEntitySpawned(ModdedEntity e) {
+						CustomEntity self = e.getSelf();
+						if (self instanceof EntityCoupleableRollingStock stock) {
+							stock.keepLoaded();
+						}
 					}
 				});
 				WirelessRemoteControlServer.init();

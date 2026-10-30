@@ -199,7 +199,7 @@ public abstract class EntityRidableRollingStock extends EntityBuildableRollingSt
 	public void onTick() {
 		super.onTick();
 
-		if (getWorld().isServer && internal.addedToChunk) {
+		if (getWorld().isServer && isAddedToChunk()) {
 			remount.forEach((uuid, pos) -> {
 				Player player = getWorld().getEntity(uuid, Player.class);
 				if (player != null) {

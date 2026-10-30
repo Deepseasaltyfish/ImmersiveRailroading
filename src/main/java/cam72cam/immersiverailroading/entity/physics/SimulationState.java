@@ -158,7 +158,7 @@ public class SimulationState {
 
             this.rollingResistanceCoefficient = stock.getDefinition().rollingResistanceCoefficient;
 
-            this.offline = !stock.internal.addedToChunk;
+            this.offline = !stock.isAddedToChunk();
         }
 
         @Override

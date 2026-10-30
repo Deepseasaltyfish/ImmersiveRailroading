@@ -108,7 +108,7 @@ public class Simulation {
                         .collect(Collectors.toList());
 
                 for (EntityCoupleableRollingStock stock : offlinePool) {
-                    if (!stock.internal.addedToChunk && !stock.internal.isDead) {
+                    if (!stock.isAddedToChunk() && !stock.isDead()) {
                         if (!loaded.contains(stock)) {
                             loaded.add(stock);
                         }
@@ -145,7 +145,7 @@ public class Simulation {
                     continue;
                 }
 
-                boolean offline = !stock.internal.addedToChunk;
+                boolean offline = !stock.isAddedToChunk();
 
                 // 离线车辆完全不加载 chunk
                 if (!offline) {

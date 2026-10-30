@@ -201,7 +201,7 @@ public abstract class EntityCoupleableRollingStock extends EntityMoveableRolling
 
 		hadElectricalPower = hasElectricalPower();
 
-		if (internal.addedToChunk
+		if (isAddedToChunk()
 				&& (this.getCurrentState() != null && !this.getCurrentState().atRest || ConfigDebug.keepStockLoaded)) {
 			if (!ConfigDebug.excludeStandaloneWagons || this.linkedToLocomotive) {
 				keepLoaded();
@@ -240,6 +240,11 @@ public abstract class EntityCoupleableRollingStock extends EntityMoveableRolling
 	}
 
 	public void keepLoaded() {
+		if (!isAddedToChunk()) {
+			// 如果是离线状态（在池子里），不需要任何区块。
+			return;
+		}
+
 		World world = getWorld();
 		world.keepLoaded(getBlockPosition());
 		if (getCurrentState() != null && !getCurrentState().atRest) {

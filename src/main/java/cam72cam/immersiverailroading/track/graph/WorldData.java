@@ -172,8 +172,14 @@ public class WorldData {
                         synchronized (regions) {
                             regions.put(id, region);
                         }
-                    } catch (IOException | NumberFormatException e) {
-                        throw new RuntimeException(e);
+                    } catch (Exception e) {
+                        // 【修复】：不再抛出 RuntimeException 导致游戏崩溃
+                        // 而是把坏掉的区域文件重命名隔离，并打印错误
+                        ImmersiveRailroading.error("Track region file %s is corrupted! Renaming to .corrupted", file.getName());
+                        ImmersiveRailroading.catching(e);
+                        File badFile = new File(file.getParentFile(), file.getName() + ".corrupted");
+                        if (badFile.exists()) badFile.delete();
+                        file.renameTo(badFile);
                     }
                 });
             }
@@ -355,7 +361,20 @@ public class WorldData {
                 }
 
                 try {
-                    TrackRegionUtil.writeBuffer(file, region.write());
+                    // 【修复】：先写临时文件
+                    File tmpFile = new File(file.getParentFile(), file.getName() + ".tmp");
+                    TrackRegionUtil.writeBuffer(tmpFile, region.write());
+
+                    // 【修复】：原子移动替换
+                    try {
+                        java.nio.file.Files.move(tmpFile.toPath(), file.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                                java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                    } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                        java.nio.file.Files.move(tmpFile.toPath(), file.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    }
+
                     region.needsWriteToDisk = false;
                 } catch (IOException e) {
                     throw new RuntimeException(e);

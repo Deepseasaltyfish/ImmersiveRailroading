@@ -4,8 +4,9 @@ import cam72cam.immersiverailroading.Config;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.library.TrackItems;
-import cam72cam.immersiverailroading.net.TrackRegionDeltaPacket;
-import cam72cam.immersiverailroading.net.TrackRegionPacket;
+import cam72cam.immersiverailroading.net.offline.TrackRegionDeltaPacket;
+import cam72cam.immersiverailroading.net.offline.TrackRegionPacket;
+import cam72cam.immersiverailroading.net.offline.VehicleSyncPacket;
 import cam72cam.immersiverailroading.track.VecYPR;
 import cam72cam.mod.entity.Player;
 import cam72cam.mod.math.Vec3i;
@@ -1259,6 +1260,6 @@ public class WorldData {
                 found.add(ref.pos);
             }
         }
-        new cam72cam.immersiverailroading.net.VehicleSyncPacket(world, found).sendToPlayer(player);
+        new VehicleSyncPacket(world, found).sendToPlayer(player);
     }
 }

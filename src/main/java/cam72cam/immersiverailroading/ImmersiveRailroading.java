@@ -10,6 +10,7 @@ import cam72cam.immersiverailroading.library.*;
 import cam72cam.immersiverailroading.model.StockModel;
 import cam72cam.immersiverailroading.multiblock.*;
 import cam72cam.immersiverailroading.net.*;
+import cam72cam.immersiverailroading.net.offline.*;
 import cam72cam.immersiverailroading.registry.DefinitionManager;
 import cam72cam.immersiverailroading.registry.EntityRollingStockDefinition;
 import cam72cam.immersiverailroading.remote_control.RemoteControlData;
@@ -26,7 +27,6 @@ import cam72cam.immersiverailroading.tile.TileMultiblock;
 import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.tile.TileRailGag;
 import cam72cam.immersiverailroading.tile.TileRailPreview;
-import cam72cam.immersiverailroading.net.TrackRegionPacket;
 import cam72cam.immersiverailroading.render.util.VolumetricCurveRenderer;
 import cam72cam.immersiverailroading.track.graph.WorldData;
 import cam72cam.immersiverailroading.util.IRFuzzy;
@@ -112,6 +112,7 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				Packet.register(TrackRegionRequestPacket::new, PacketDirection.ClientToServer);
 				Packet.register(VehicleRequestPacket::new, PacketDirection.ClientToServer);
 				Packet.register(VehicleSyncPacket::new, PacketDirection.ServerToClient);
+				Packet.register(SwitchChangePacket::new, PacketDirection.ClientToServer);
 
 				ServerChronoState.register();
 				cam72cam.mod.entity.EntityPool.register(new cam72cam.mod.entity.IEntityPoolPolicy() {

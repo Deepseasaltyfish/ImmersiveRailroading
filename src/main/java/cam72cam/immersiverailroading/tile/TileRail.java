@@ -89,10 +89,10 @@ public class TileRail extends TileRailBase {
 			if(parent != null) {
 				parent.info = parent.info.with(b -> b.switchState = state);
 				parent.markAllDirty();
-			}
 
-			TrackMultiGeometrySegment seg = WorldData.get(getWorld()).getTrackBlock(getParentWithoutDamage());
-			if (seg != null) seg.updateSwitchSate(state);
+				TrackMultiGeometrySegment seg = WorldData.get(getWorld()).getTrackBlock(getParentWithoutDamage());
+				if (seg != null) seg.updateSwitchSate(state);
+			}
 		}
 	}
 

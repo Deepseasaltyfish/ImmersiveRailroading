@@ -1,4 +1,4 @@
-package cam72cam.immersiverailroading.net;
+package cam72cam.immersiverailroading.net.offline;
 
 import cam72cam.immersiverailroading.track.graph.TrackRegionUtil;
 import cam72cam.immersiverailroading.track.graph.WorldData;

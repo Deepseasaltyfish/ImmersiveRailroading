@@ -1,8 +1,11 @@
 package cam72cam.immersiverailroading.gui;
 
 import cam72cam.immersiverailroading.library.Gauge;
-import cam72cam.immersiverailroading.net.TrackRegionRequestPacket;
-import cam72cam.immersiverailroading.net.VehicleRequestPacket;
+import cam72cam.immersiverailroading.library.SwitchState;
+import cam72cam.immersiverailroading.library.TrackItems;
+import cam72cam.immersiverailroading.net.offline.SwitchChangePacket;
+import cam72cam.immersiverailroading.net.offline.TrackRegionRequestPacket;
+import cam72cam.immersiverailroading.net.offline.VehicleRequestPacket;
 import cam72cam.immersiverailroading.render.util.Color;
 import cam72cam.immersiverailroading.render.util.FlatCurveRenderer;
 import cam72cam.immersiverailroading.track.BuilderCubicCurve;
@@ -37,7 +40,16 @@ public class GlobalRailwayMap implements IScreen {
     private static final Color COLOR_TRACK      = new Color(0.35, 0.90, 0.35, 1.0);
     private static final Color COLOR_TRACK_FB   = new Color(0.90, 0.60, 0.30, 1.0);
     private static final Color COLOR_PLAYER     = new Color(0.30, 0.60, 1.00, 1.0);
-    private static final Color COLOR_VEHICLE    = new Color(1.00, 0.30, 0.30, 1.0); // 红色车辆
+    private static final Color COLOR_VEHICLE    = new Color(1.00, 0.30, 0.30, 1.0);
+
+    // 道岔交互颜色
+    private static final Color COLOR_SWITCH_HOVER  = new Color(1.0, 0.8, 0.2, 1.0);
+    private static final Color COLOR_SWITCH_SELECT = new Color(0.2, 1.0, 1.0, 1.0);
+    private static final int COLOR_BTN_BG          = 0xFF333333;
+    private static final int COLOR_BTN_HOVER       = 0xFF555555;
+    private static final int COLOR_BTN_CLOSE       = 0xFF882222;
+    private static final int COLOR_BTN_CLOSE_HOVER = 0xFFAA3333;
+    private static final int COLOR_BTN_TEXT        = 0xFFFFFFFF;
 
     private double panX, panZ;
     private double zoom = 2.0;
@@ -55,6 +67,14 @@ public class GlobalRailwayMap implements IScreen {
 
     private int tickCounter = 0;
 
+    // 交互状态
+    private TrackMultiGeometrySegment hoveredSwitch = null;
+    private TrackMultiGeometrySegment selectedSwitch = null;
+
+    // 用于 UI 绘制的鼠标坐标缓存（因为 draw 时无法直接获取实时鼠标）
+    private int lastMouseX = 0;
+    private int lastMouseY = 0;
+
     // ================================================================
 
     @Override
@@ -70,7 +90,7 @@ public class GlobalRailwayMap implements IScreen {
 
         offsetCache.clear();
         collectDiagnostics();
-        tickCounter = 0; // 立即触发一次
+        tickCounter = 0;
     }
 
     @Override
@@ -91,7 +111,7 @@ public class GlobalRailwayMap implements IScreen {
 
     private void tick() {
         tickCounter++;
-        if (tickCounter >= 20) { // 每 1 秒请求一次
+        if (tickCounter >= 20) {
             tickCounter = 0;
             sendViewportRequests();
         }
@@ -108,7 +128,6 @@ public class GlobalRailwayMap implements IScreen {
         int minZ = (int) Math.floor(panZ - halfH - 512);
         int maxZ = (int) Math.ceil(panZ + halfH + 512);
 
-        // 1. 请求 Region 全量
         int rxMin = minX >> 9, rxMax = maxX >> 9, rzMin = minZ >> 9, rzMax = maxZ >> 9;
         int limit = 7;
         int centerRx = (int) panX >> 9, centerRz = (int) panZ >> 9;
@@ -122,8 +141,6 @@ public class GlobalRailwayMap implements IScreen {
             }
         }
         new TrackRegionRequestPacket(world, currentRegions).sendToServer();
-
-        // 2. 请求视口内的车辆数据
         new VehicleRequestPacket(world, minX, minZ, maxX, maxZ).sendToServer();
     }
 
@@ -139,34 +156,58 @@ public class GlobalRailwayMap implements IScreen {
         drawGrid(mapState, width, height);
         if (data != null) {
             drawRegionsAndTracks(mapState, width, height);
-            drawVehicles(mapState, width, height); // 绘制车辆
+            drawVehicles(mapState, width, height);
         }
         drawPlayerMarker(mapState, width, height);
         drawHud(width, height);
+
+        // 绘制道岔 UI 按钮
+        drawSwitchUI(width, height);
     }
 
-    // 绘制车辆
+    private void drawSwitchUI(int width, int height) {
+        if (selectedSwitch == null) return;
+
+        Vec3i pos = selectedSwitch.getBlockPos();
+        int sx = (int) (width / 2.0 + (pos.x - panX) * zoom);
+        int sy = (int) (height / 2.0 + (pos.z - panZ) * zoom);
+
+        int btnX = sx + 15;
+        int btnY = sy - 15;
+        int btnW = 70;
+        int btnH = 16;
+        int closeW = 16;
+
+        // 使用 lastMouseX/Y 判断悬停
+        boolean hoverSwitchBtn = lastMouseX >= btnX && lastMouseX <= btnX + btnW && lastMouseY >= btnY && lastMouseY <= btnY + btnH;
+        GUIHelpers.drawRect(btnX, btnY, btnW, btnH, hoverSwitchBtn ? COLOR_BTN_HOVER : COLOR_BTN_BG);
+
+        String stateText = selectedSwitch.getSwitchStateEnum().toString();
+        Matrix4 m = new Matrix4();
+        GUIHelpers.drawCenteredString(stateText, btnX + btnW / 2, btnY + 4, COLOR_BTN_TEXT, m);
+
+        int closeX = btnX + btnW + 4;
+        boolean hoverCloseBtn = lastMouseX >= closeX && lastMouseX <= closeX + closeW && lastMouseY >= btnY && lastMouseY <= btnY + btnH;
+        GUIHelpers.drawRect(closeX, btnY, closeW, btnH, hoverCloseBtn ? COLOR_BTN_CLOSE_HOVER : COLOR_BTN_CLOSE);
+        GUIHelpers.drawCenteredString("X", closeX + closeW / 2, btnY + 4, COLOR_BTN_TEXT, m);
+    }
+
     private void drawVehicles(RenderState state, int width, int height) {
         if (data.clientMapVehicles == null || data.clientMapVehicles.isEmpty()) return;
-
         FlatCurveRenderer fr = new FlatCurveRenderer(state, null);
         double yScale = -zoom;
 
         for (Vec3d pos : data.clientMapVehicles) {
             double dx = pos.x - panX;
             double dz = pos.z - panZ;
-
-            // 剔除屏幕外的车辆
             if (Math.abs(dx) > (width / 2.0) / zoom + 10 || Math.abs(dz) > (height / 2.0) / zoom + 10) continue;
 
             double size = 4.0;
             double w = size / zoom;
             double h = -size / zoom;
 
-            Vec3d top    = new Vec3d(dx,      dz + h, 0);
-            Vec3d right  = new Vec3d(dx + w,  dz,     0);
-            Vec3d bottom = new Vec3d(dx,      dz - h, 0);
-            Vec3d left   = new Vec3d(dx - w,  dz,     0);
+            Vec3d top = new Vec3d(dx, dz + h, 0), right = new Vec3d(dx + w, dz, 0);
+            Vec3d bottom = new Vec3d(dx, dz - h, 0), left = new Vec3d(dx - w, dz, 0);
 
             drawExtendedLine(fr, top, right, 1.0, zoom, yScale, COLOR_VEHICLE);
             drawExtendedLine(fr, right, bottom, 1.0, zoom, yScale, COLOR_VEHICLE);
@@ -175,11 +216,140 @@ public class GlobalRailwayMap implements IScreen {
         }
     }
 
+    public boolean handleMouse(ClientEvents.MouseGuiEvent evt) {
+        int width  = GUIHelpers.getScreenWidth();
+        int height = GUIHelpers.getScreenHeight();
+        double cx = width / 2.0;
+        double cy = height / 2.0;
+
+        // 更新鼠标缓存坐标
+        lastMouseX = evt.x;
+        lastMouseY = evt.y;
+
+        switch (evt.action) {
+            case SCROLL: {
+                double worldXBefore = panX + (evt.x - cx) / zoom;
+                double worldZBefore = panZ + (evt.y - cy) / zoom;
+                zoom = clamp(zoom * Math.pow(1.15, evt.scroll), 0.1, 64.0);
+                panX = worldXBefore - (evt.x - cx) / zoom;
+                panZ = worldZBefore - (evt.y - cy) / zoom;
+                return false;
+            }
+            case CLICK: {
+                // 判断左键
+                boolean isLeftClick = (evt.button == 0);
+
+                // 1. 优先处理道岔 UI 按钮点击
+                if (selectedSwitch != null && isLeftClick) {
+                    if (isMouseInCloseBtn(evt.x, evt.y)) {
+                        selectedSwitch = null;
+                        return false;
+                    }
+                    if (isMouseInSwitchBtn(evt.x, evt.y)) {
+                        SwitchState target = selectedSwitch.circleSwitchState();
+                        selectedSwitch.updateSwitchSate(target);
+                        new SwitchChangePacket(world, selectedSwitch.getBlockPos(), target).sendToServer();
+                        return false;
+                    }
+                }
+
+                // 2. 选中道岔
+                if (hoveredSwitch != null && isLeftClick) {
+                    selectedSwitch = hoveredSwitch;
+                    return false;
+                }
+
+                // 3. 拖拽地图
+                if (isLeftClick) {
+                    selectedSwitch = null;
+                    dragging = true;
+                    dragStartScreenX = evt.x; dragStartScreenY = evt.y;
+                    dragStartPanX = panX; dragStartPanZ = panZ;
+                }
+                return false;
+            }
+            case MOVE: {
+                if (dragging) {
+                    panX = dragStartPanX - (evt.x - dragStartScreenX) / zoom;
+                    panZ = dragStartPanZ - (evt.y - dragStartScreenY) / zoom;
+                    return false;
+                }
+
+                // 悬停探测
+                double mouseWorldX = panX + (evt.x - cx) / zoom;
+                double mouseWorldZ = panZ + (evt.y - cy) / zoom;
+
+                // 屏幕 15 像素对应的世界距离半径（平方）
+                double radiusWorld = 15.0 / zoom;
+                double radiusSq = radiusWorld * radiusWorld;
+
+                hoveredSwitch = null;
+                double closestDistSq = Double.MAX_VALUE;
+
+                if (data != null) {
+                    // 1. 算出鼠标所在位置的 Region ID
+                    long regionId = TrackRegionUtil.vecToRegion(new Vec3i((int)Math.floor(mouseWorldX), 0, (int)Math.floor(mouseWorldZ)));
+
+                    // 2. 直接获取该 Region 的占位方块索引
+                    Map<Vec3i, List<Vec3i>> regionMap = data.trackBlockParentsByRegion.get(regionId);
+
+                    if (regionMap != null) {
+                        // 3. 遍历该 Region 里的所有占位方块
+                        for (Map.Entry<Vec3i, List<Vec3i>> entry : regionMap.entrySet()) {
+                            Vec3i blockPos = entry.getKey();
+
+                            // 计算鼠标距离该方块中心的平面距离 (XZ)
+                            double dx = blockPos.x + 0.5 - mouseWorldX;
+                            double dz = blockPos.z + 0.5 - mouseWorldZ;
+                            double d2 = dx * dx + dz * dz;
+
+                            // 4. 如果在鼠标附近且比之前的更近
+                            if (d2 < radiusSq && d2 < closestDistSq) {
+                                // 获取占用该方块的所有父级轨道
+                                for (Vec3i parentAbs : entry.getValue()) {
+                                    TrackMultiGeometrySegment seg = data.getTrackBlock(parentAbs);
+                                    // 只要父级是道岔，就命中
+                                    if (seg != null && seg.type == TrackItems.SWITCH) {
+                                        closestDistSq = d2;
+                                        hoveredSwitch = seg;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+            case RELEASE: {
+                if (dragging) { dragging = false; return false; }
+                return true;
+            }
+        }
+        return true;
+    }
+
+    private boolean isMouseInSwitchBtn(int mx, int my) {
+        if (selectedSwitch == null) return false;
+        int width = GUIHelpers.getScreenWidth(), height = GUIHelpers.getScreenHeight();
+        Vec3i pos = selectedSwitch.getBlockPos();
+        int sx = (int) (width / 2.0 + (pos.x - panX) * zoom);
+        int sy = (int) (height / 2.0 + (pos.z - panZ) * zoom);
+        int btnX = sx + 15, btnY = sy - 15;
+        return mx >= btnX && mx <= btnX + 70 && my >= btnY && my <= btnY + 16;
+    }
+
+    private boolean isMouseInCloseBtn(int mx, int my) {
+        if (selectedSwitch == null) return false;
+        int width = GUIHelpers.getScreenWidth(), height = GUIHelpers.getScreenHeight();
+        Vec3i pos = selectedSwitch.getBlockPos();
+        int sx = (int) (width / 2.0 + (pos.x - panX) * zoom);
+        int sy = (int) (height / 2.0 + (pos.z - panZ) * zoom);
+        int closeX = sx + 15 + 70 + 4, btnY = sy - 15;
+        return mx >= closeX && mx <= closeX + 16 && my >= btnY && my <= btnY + 16;
+    }
+
     private void collectDiagnostics() {
-        diagRegionCount = 0;
-        diagTrackCount = 0;
-        diagPointCount = 0;
-        diagNullCacheCount = 0;
+        diagRegionCount = 0; diagTrackCount = 0; diagPointCount = 0; diagNullCacheCount = 0;
         diagTrackMinX = Double.MAX_VALUE; diagTrackMinZ = Double.MAX_VALUE;
         diagTrackMaxX = -Double.MAX_VALUE; diagTrackMaxZ = -Double.MAX_VALUE;
 
@@ -200,43 +370,6 @@ public class GlobalRailwayMap implements IScreen {
                 }
             }
         }
-    }
-
-    public boolean handleMouse(ClientEvents.MouseGuiEvent evt) {
-        int width  = GUIHelpers.getScreenWidth();
-        int height = GUIHelpers.getScreenHeight();
-        double cx = width / 2.0;
-        double cy = height / 2.0;
-
-        switch (evt.action) {
-            case SCROLL: {
-                double worldXBefore = panX + (evt.x - cx) / zoom;
-                double worldZBefore = panZ + (evt.y - cy) / zoom;
-                zoom = clamp(zoom * Math.pow(1.15, evt.scroll), 0.1, 64.0);
-                panX = worldXBefore - (evt.x - cx) / zoom;
-                panZ = worldZBefore - (evt.y - cy) / zoom;
-                return false;
-            }
-            case CLICK: {
-                dragging = true;
-                dragStartScreenX = evt.x; dragStartScreenY = evt.y;
-                dragStartPanX = panX; dragStartPanZ = panZ;
-                return false;
-            }
-            case MOVE: {
-                if (dragging) {
-                    panX = dragStartPanX - (evt.x - dragStartScreenX) / zoom;
-                    panZ = dragStartPanZ - (evt.y - dragStartScreenY) / zoom;
-                    return false;
-                }
-                return true;
-            }
-            case RELEASE: {
-                if (dragging) { dragging = false; return false; }
-                return true;
-            }
-        }
-        return true;
     }
 
     private void drawGrid(RenderState state, int width, int height) {
@@ -296,9 +429,16 @@ public class GlobalRailwayMap implements IScreen {
 
         for (TrackRegion region : data.regions.values()) {
             for (TrackMultiGeometrySegment segment : region.trackBlocks.values()) {
+                Color currentColor = COLOR_TRACK;
+                if (segment == hoveredSwitch) {
+                    currentColor = COLOR_SWITCH_HOVER;
+                } else if (segment == selectedSwitch) {
+                    currentColor = COLOR_SWITCH_SELECT;
+                }
+
                 for (Map<Gauge, TrackSingleGeometrySegment> branch : segment.paths) {
                     for (TrackSingleGeometrySegment single : branch.values()) {
-                        drawSingleSegment(fr, single, panX, panZ, minX, maxX, minZ, maxZ, yScale);
+                        drawSingleSegment(fr, single, panX, panZ, minX, maxX, minZ, maxZ, yScale, currentColor);
                     }
                 }
             }
@@ -307,7 +447,7 @@ public class GlobalRailwayMap implements IScreen {
 
     private void drawSingleSegment(FlatCurveRenderer fr, TrackSingleGeometrySegment single,
                                    double panX, double panZ,
-                                   double minX, double maxX, double minZ, double maxZ, double yScale) {
+                                   double minX, double maxX, double minZ, double maxZ, double yScale, Color color) {
         List<VecYPR> points = single.pointsCache;
         Vec3d offset = offsetCache.get(single);
         BuilderCubicCurve builder = null;
@@ -322,7 +462,7 @@ public class GlobalRailwayMap implements IScreen {
                 VecYPR a = points.get(i); VecYPR b = points.get(i + 1);
                 double ax = a.x + ox, az = a.z + oz; double bx = b.x + ox, bz = b.z + oz;
                 if (!segmentVisible(ax, az, bx, bz, minX, maxX, minZ, maxZ)) continue;
-                fr.drawLine(new Vec3d(ax - panX, az - panZ, 0), new Vec3d(bx - panX, bz - panZ, 0), COLOR_TRACK, zoom, yScale, 1);
+                fr.drawLine(new Vec3d(ax - panX, az - panZ, 0), new Vec3d(bx - panX, bz - panZ, 0), color, zoom, yScale, 1);
             }
             return;
         }

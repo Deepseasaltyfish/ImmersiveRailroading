@@ -62,6 +62,23 @@ public class TrackMultiGeometrySegment {
         this.switchState = switchState.ordinal();
     }
 
+    // 获取当前的 SwitchState 枚举
+    public SwitchState getSwitchStateEnum() {
+        return SwitchState.values()[this.switchState];
+    }
+
+    // 循环切换道岔状态：STRAIGHT <-> TURN
+    public SwitchState circleSwitchState() {
+        SwitchState current = getSwitchStateEnum();
+        if (current == SwitchState.STRAIGHT) {
+            return SwitchState.TURN;
+        } else if (current == SwitchState.TURN) {
+            return SwitchState.STRAIGHT;
+        } else {
+            return SwitchState.STRAIGHT; // NONE -> STRAIGHT
+        }
+    }
+
     public void updateTablePos(World world, double tablePos) {
         if(tablePos == this.tablePos) return;
         this.tablePos = tablePos;

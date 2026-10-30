@@ -146,7 +146,7 @@ public class VehiclePersistence {
 
             try {
                 byte[] bytes = Files.readAllBytes(file.toPath());
-                TagCompound root = new TagCompound(bytes); // 如果文件损坏，这里会抛出 IOException
+                TagCompound root = new TagCompound(bytes);
                 if (!root.hasKey("vehicles")) continue;
 
                 Map<UUID, TagCompound> vehicles = root.getMap("vehicles", UUID::fromString, tc -> tc);
@@ -159,10 +159,10 @@ public class VehiclePersistence {
                         ModdedEntity e = pool.createFromTagCompound(entry.getValue());
                         restored++;
 
-                        if (!Config.ConfigDebug.enableEntityPool) {
+                        // we will get duplicated wrong entity cant be interacted?
+//                        if (!Config.ConfigDebug.enableEntityPool) {
 //                            pool.spawn(e);
-                            // we will get duplicated wrong entity cant be interacted?
-                        }
+//                        }
                         System.out.println(restored);
                     } catch (Exception e) {
                         ModCore.catching(e, "Failed to restore vehicle %s", entry.getKey());

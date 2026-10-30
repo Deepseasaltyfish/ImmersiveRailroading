@@ -5,6 +5,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+import cam72cam.immersiverailroading.Config;
 import cam72cam.immersiverailroading.entity.physics.Consist;
 import cam72cam.immersiverailroading.entity.physics.Simulation;
 import cam72cam.immersiverailroading.entity.physics.SimulationState;
@@ -240,8 +241,7 @@ public abstract class EntityCoupleableRollingStock extends EntityMoveableRolling
 	}
 
 	public void keepLoaded() {
-		if (!isAddedToChunk()) {
-			// 如果是离线状态（在池子里），不需要任何区块。
+		if (!isAddedToChunk() && !Config.ConfigDebug.offlineVehicleLoadChunks) {
 			return;
 		}
 

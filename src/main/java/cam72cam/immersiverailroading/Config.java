@@ -301,6 +301,9 @@ public class Config {
 		@Comment("Enable offline entity pool to save chunks (requires game restart for full effect)")
 		public static boolean enableEntityPool = true;
 
+		@Comment("Offline Vehicle load chunks")
+		public static boolean offlineVehicleLoadChunks = false;
+
 		@Comment("Number of buckets to split vehicle data files (changes require reboot to take effect for saving)")
 		public static int vehicleBucketCount = 16;
 

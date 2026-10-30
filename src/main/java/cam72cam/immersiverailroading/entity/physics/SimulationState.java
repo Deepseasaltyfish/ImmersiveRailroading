@@ -334,7 +334,7 @@ public class SimulationState {
     }
 
     public void calculateBlockCollisions(List<Vec3i> blocksAlreadyBroken) {
-        if (config.offline) {
+        if (config.offline && !Config.ConfigDebug.offlineVehicleLoadChunks) {
             this.collidingBlocks = Collections.emptyList();
             this.trackToUpdate = Collections.emptyList();
             this.interferingBlocks = Collections.emptyList();

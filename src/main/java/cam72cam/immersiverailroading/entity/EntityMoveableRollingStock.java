@@ -311,7 +311,7 @@ public abstract class EntityMoveableRollingStock extends EntityRidableRollingSto
 					// rolling stock collisions handled by looking at the front and
 					// rear coupler offsets
 					continue;
-				} 
+				}
 	
 				if (entity.getRiding() instanceof EntityMoveableRollingStock) {
 					// Don't apply bb to passengers
@@ -350,7 +350,7 @@ public abstract class EntityMoveableRollingStock extends EntityRidableRollingSto
 				}
 			}
 
-            if (isAddedToChunk()) {
+            if (isAddedToChunk() || Config.ConfigDebug.offlineVehicleLoadChunks) {
                 // Riding on top of cars
                 final RealBB bb = this.getCollision().offset(new Vec3d(0, gauge.scale()*2, 0));
                 List<Entity> entitiesAbove = getWorld().getEntities((Entity entity) -> (entity.isLiving() || entity.isPlayer()) && bb.intersects(entity.getBounds()), Entity.class);

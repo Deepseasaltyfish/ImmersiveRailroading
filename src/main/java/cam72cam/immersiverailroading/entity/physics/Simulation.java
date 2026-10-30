@@ -97,23 +97,22 @@ public class Simulation {
             // We should only need to do this when stock is no longer at rest or changes dirty flag
             int lastCount = loaded == null ? 0 : loaded.size();
             loaded = world.getEntities(EntityCoupleableRollingStock.class);
-            // 合并池里的离线车辆
-            // 原来这里直接合并池子里的车
+            // merge pool vehicles (if pool is closed, but we need to load data, we also need to do this)
 //            if (Config.ConfigDebug.enableEntityPool) {
-                List<EntityCoupleableRollingStock> offlinePool = EntityPool.get(world).getAllEntities().stream()
-                        .map(ModdedEntity::getSelf)
-                        .filter(Objects::nonNull) // 确保 self 已初始化
-                        .filter(s -> s instanceof EntityCoupleableRollingStock)
-                        .map(s -> (EntityCoupleableRollingStock) s)
-                        .collect(Collectors.toList());
+            List<EntityCoupleableRollingStock> offlinePool = EntityPool.get(world).getAllEntities().stream()
+                    .map(ModdedEntity::getSelf)
+                    .filter(Objects::nonNull) // 确保 self 已初始化
+                    .filter(s -> s instanceof EntityCoupleableRollingStock)
+                    .map(s -> (EntityCoupleableRollingStock) s)
+                    .collect(Collectors.toList());
 
-                for (EntityCoupleableRollingStock stock : offlinePool) {
-                    if (!stock.isAddedToChunk() && !stock.isDead()) {
-                        if (!loaded.contains(stock)) {
-                            loaded.add(stock);
-                        }
+            for (EntityCoupleableRollingStock stock : offlinePool) {
+                if (!stock.isAddedToChunk() && !stock.isDead()) {
+                    if (!loaded.contains(stock)) {
+                        loaded.add(stock);
                     }
                 }
+            }
 //            }
 
             boolean newChunksLoaded = lastCount != loaded.size();
@@ -146,9 +145,7 @@ public class Simulation {
                 }
 
                 boolean offline = !stock.isAddedToChunk();
-
-                // 离线车辆完全不加载 chunk
-                if (!offline) {
+                if (!offline || Config.ConfigDebug.offlineVehicleLoadChunks) {
                     world.keepLoaded(new Vec3i(state.position));
 
                     if (state.consist.positions != null) {

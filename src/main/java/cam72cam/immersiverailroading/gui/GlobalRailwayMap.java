@@ -71,6 +71,7 @@ public class GlobalRailwayMap implements IScreen {
     // 交互状态
     private TrackMultiGeometrySegment hoveredSwitch = null;
     private TrackMultiGeometrySegment selectedSwitch = null;
+    private Vec3d teleportPos = null;
 
     // 用于 UI 绘制的鼠标坐标缓存（因为 draw 时无法直接获取实时鼠标）
     private int lastMouseX = 0;
@@ -161,9 +162,8 @@ public class GlobalRailwayMap implements IScreen {
         }
         drawPlayerMarker(mapState, width, height);
         drawHud(width, height);
-
-        // 绘制道岔 UI 按钮
         drawSwitchUI(width, height);
+        drawTeleportUI(width, height);
     }
 
     private void drawSwitchUI(int width, int height) {
@@ -276,9 +276,22 @@ public class GlobalRailwayMap implements IScreen {
                     }
                 }
 
+                // 传送 UI 按钮点击
+                if (teleportPos != null && isLeftClick) {
+                    if (isMouseInTeleportCloseBtn(evt.x, evt.y)) {
+                        teleportPos = null;
+                        return false;
+                    }
+                    if (isMouseInTeleportBtn(evt.x, evt.y)) {
+                        doTeleport();
+                        return false;
+                    }
+                }
+
                 // 2. 处理点击选中道岔
                 if (hoveredSwitch != null && isLeftClick) {
                     selectedSwitch = hoveredSwitch;
+                    teleportPos = null;
                     return false;
                 }
 
@@ -344,11 +357,84 @@ public class GlobalRailwayMap implements IScreen {
                 return true;
             }
             case RELEASE: {
-                if (dragging) { dragging = false; return false; }
+                if (dragging) {
+                    dragging = false;
+                    double dx = evt.x - dragStartScreenX;
+                    double dy = evt.y - dragStartScreenY;
+                    // 位移 < 4px 视为点击（而非拖拽），在该点放置传送标记
+                    if (dx * dx + dy * dy <= 16) {
+                        double wx = dragStartPanX + (dragStartScreenX - cx) / zoom;
+                        double wz = dragStartPanZ + (dragStartScreenY - cy) / zoom;
+                        teleportPos = new Vec3d(wx, 0, wz);
+                    }
+                    return false;
+                }
                 return true;
             }
         }
         return true;
+    }
+
+    private void drawTeleportUI(int width, int height) {
+        if (teleportPos == null) return;
+
+        int sx = (int) (width / 2.0 + (teleportPos.x - panX) * zoom);
+        int sy = (int) (height / 2.0 + (teleportPos.z - panZ) * zoom);
+
+        // 传送点标记（小十字）
+        GUIHelpers.drawRect(sx - 5, sy, 11, 1, 0xFF33FFFF);
+        GUIHelpers.drawRect(sx, sy - 5, 1, 11, 0xFF33FFFF);
+
+        int btnY = sy - 15;
+        int btnW = 70;   // 与道岔按钮一致
+        int btnH = 16;
+        int gap = 4;
+        int closeW = 16;
+
+        int btnX = sx + 15;
+        int closeX = btnX + btnW + gap;
+
+        Matrix4 m = new Matrix4();
+
+        // 传送按钮
+        boolean hoverBtn = lastMouseX >= btnX && lastMouseX <= btnX + btnW
+                && lastMouseY >= btnY && lastMouseY <= btnY + btnH;
+        GUIHelpers.drawRect(btnX, btnY, btnW, btnH, hoverBtn ? COLOR_BTN_HOVER : COLOR_BTN_BG);
+        GUIHelpers.drawCenteredString("Teleport", btnX + btnW / 2, btnY + 4, COLOR_BTN_TEXT, m);
+
+        // 关闭按钮
+        boolean hoverClose = lastMouseX >= closeX && lastMouseX <= closeX + closeW
+                && lastMouseY >= btnY && lastMouseY <= btnY + btnH;
+        GUIHelpers.drawRect(closeX, btnY, closeW, btnH, hoverClose ? COLOR_BTN_CLOSE_HOVER : COLOR_BTN_CLOSE);
+        GUIHelpers.drawCenteredString("X", closeX + closeW / 2, btnY + 4, COLOR_BTN_TEXT, m);
+    }
+
+    private boolean isMouseInTeleportBtn(int mx, int my) {
+        if (teleportPos == null) return false;
+        int width = GUIHelpers.getScreenWidth(), height = GUIHelpers.getScreenHeight();
+        int sx = (int) (width / 2.0 + (teleportPos.x - panX) * zoom);
+        int sy = (int) (height / 2.0 + (teleportPos.z - panZ) * zoom);
+        int btnX = sx + 15, btnY = sy - 15;
+        return mx >= btnX && mx <= btnX + 70 && my >= btnY && my <= btnY + 16;
+    }
+
+    private boolean isMouseInTeleportCloseBtn(int mx, int my) {
+        if (teleportPos == null) return false;
+        int width = GUIHelpers.getScreenWidth(), height = GUIHelpers.getScreenHeight();
+        int sx = (int) (width / 2.0 + (teleportPos.x - panX) * zoom);
+        int sy = (int) (height / 2.0 + (teleportPos.z - panZ) * zoom);
+        int closeX = sx + 15 + 70 + 4, btnY = sy - 15;
+        return mx >= closeX && mx <= closeX + 16 && my >= btnY && my <= btnY + 16;
+    }
+
+    /** 通过聊天栏执行 /tp 指令（暂用命令实现） */
+    private void doTeleport() {
+        if (teleportPos == null) return;
+        int x = (int) Math.floor(teleportPos.x);
+        int z = (int) Math.floor(teleportPos.z);
+        net.minecraft.client.Minecraft.getMinecraft().player // todo
+                .sendChatMessage(String.format("/tp %d ~ %d", x, z));
+        teleportPos = null;
     }
 
     private boolean isMouseInSwitchBtn(int mx, int my) {
@@ -559,15 +645,22 @@ public class GlobalRailwayMap implements IScreen {
         Vec3d p = MinecraftClient.getPlayer().getPosition();
         Matrix4 m = new Matrix4();
         int y = 10;
+
+        // 光标对应的世界坐标（与 MOVE 里 mouseWorldX/Z 的换算保持一致）
+        double cursorWorldX = panX + (lastMouseX - width / 2.0) / zoom;
+        double cursorWorldZ = panZ + (lastMouseY - height / 2.0) / zoom;
+
         GUIHelpers.drawCenteredString(String.format("Zoom: %.2fx", zoom), width / 2, y, 0xFFFFFFFF, m); y += 14;
-        GUIHelpers.drawCenteredString(String.format("Center: %d, %d   Player: %d, %d", (int) panX, (int) panZ, (int) p.x, (int) p.z), width / 2, y, 0xFFFFFFFF, m); y += 14;
+        GUIHelpers.drawCenteredString(String.format("Cursor: %d, %d   Player: %d, %d",
+                (int) Math.floor(cursorWorldX), (int) Math.floor(cursorWorldZ),
+                (int) p.x, (int) p.z), width / 2, y, 0xFFFFFFFF, m); y += 14;
         GUIHelpers.drawCenteredString(String.format("Regions=%d  Tracks=%d  Points=%d  NullCache=%d", diagRegionCount, diagTrackCount, diagPointCount, diagNullCacheCount), width / 2, y, 0xFFFFFF80, m); y += 14;
         if (diagTrackCount > 0) {
             GUIHelpers.drawCenteredString(String.format("TrackBBox: X[%d,%d] Z[%d,%d]", (int) diagTrackMinX, (int) diagTrackMaxX, (int) diagTrackMinZ, (int) diagTrackMaxZ), width / 2, y, 0xFFFFFF80, m);
         } else {
             GUIHelpers.drawCenteredString("No track data on client yet", width / 2, y, 0xFFFF6060, m);
         }
-        GUIHelpers.drawCenteredString("Scroll = zoom   Drag = pan   ESC = close", width / 2, height - 16, 0xFFA0A0A0, m);
+        GUIHelpers.drawCenteredString("Scroll = zoom   Drag = pan   Click = teleport   ESC = close", width / 2, height - 16, 0xFFA0A0A0, m);
     }
 
     private boolean segmentVisible(double wx1, double wz1, double wx2, double wz2, double minX, double maxX, double minZ, double maxZ) {

@@ -10,22 +10,38 @@ import cam72cam.mod.world.World;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class VehiclePersistence {
-    // 匹配 vehicles_16_0.dat
     private static final Pattern FILE_PATTERN = Pattern.compile("^vehicles_(\\d+)_(\\d+)\\.dat$");
 
     private static final ExecutorService SAVE_EXECUTOR = Executors.newFixedThreadPool(4, r -> {
         Thread t = new Thread(r, "IR-Vehicle-Save");
-        t.setDaemon(true);
+        // 注意：不能再是 Daemon 线程了，否则关窗时会直接被杀掉
+        t.setDaemon(false);
         return t;
     });
+
+    // 【核心修复 1】：注册 JVM 关闭钩子，保证强退时数据能写完
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            SAVE_EXECUTOR.shutdown();
+            try {
+                // 最多等 10 秒，防止死锁卡死游戏
+                if (!SAVE_EXECUTOR.awaitTermination(10, TimeUnit.SECONDS)) {
+                    SAVE_EXECUTOR.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                SAVE_EXECUTOR.shutdownNow();
+            }
+        }, "IR-Vehicle-Save-ShutdownHook"));
+    }
 
     private static File dirFor(File levelDirectory, World world) {
         return new File(levelDirectory, "immersiverailroading" + world.getId() + "/vehicles");
@@ -39,7 +55,6 @@ public class VehiclePersistence {
         return Math.floorMod(uuid.hashCode(), bucketCount);
     }
 
-    /** 挂到 CommonEvents.WorldData.SAVE */
     public static void save(World world, File levelDirectory) {
         if (!world.isServer) return;
         if (!Config.ConfigDebug.enableEntityPool) return;
@@ -47,11 +62,10 @@ public class VehiclePersistence {
         EntityPool pool = EntityPool.get(world);
         File dir = dirFor(levelDirectory, world);
 
-        int bucketCount = Math.max(1, Config.ConfigDebug.vehicleBucketCount); // 安全保护
+        int bucketCount = Math.max(1, Config.ConfigDebug.vehicleBucketCount);
         Map<Integer, List<ModdedEntity>> buckets = new HashMap<>();
 
         for (ModdedEntity e : pool.getAllEntities()) {
-            // 如果只保存离线车：if (e.addedToChunk) continue;
             int b = bucketFor(e.getPersistentID(), bucketCount);
             buckets.computeIfAbsent(b, k -> new ArrayList<>()).add(e);
         }
@@ -66,7 +80,6 @@ public class VehiclePersistence {
                 Set<String> currentValidFiles = new HashSet<>();
                 int totalSaved = 0;
 
-                // 1. 写入所有当前桶
                 for (Map.Entry<Integer, List<ModdedEntity>> entry : buckets.entrySet()) {
                     int bucketId = entry.getKey();
                     List<ModdedEntity> entities = entry.getValue();
@@ -79,12 +92,24 @@ public class VehiclePersistence {
                     root.setMap("vehicles", map, UUID::toString, tc -> tc);
 
                     File file = fileFor(levelDirectory, world, bucketCount, bucketId);
-                    Files.write(file.toPath(), root.toBytes());
+                    Path targetPath = file.toPath();
+                    Path tmpPath = targetPath.resolveSibling(file.getName() + ".tmp");
+
+                    // 【核心修复 2】：原子写入。先写临时文件
+                    Files.write(tmpPath, root.toBytes());
+
+                    // 瞬间移动替换，保证就算在写入途中崩溃，原文件也不会损坏
+                    try {
+                        Files.move(tmpPath, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                    } catch (AtomicMoveNotSupportedException e) {
+                        Files.move(tmpPath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                    }
+
                     currentValidFiles.add(file.getName());
                     totalSaved += map.size();
                 }
 
-                // 2. 清理旧的分卷文件（如果 Config 从 16 改成了 32，旧的 vehicles_16_* 要删掉）
+                // 清理旧的分卷
                 File[] existingFiles = dir.listFiles();
                 if (existingFiles != null) {
                     for (File f : existingFiles) {
@@ -96,15 +121,13 @@ public class VehiclePersistence {
                     }
                 }
 
-                ImmersiveRailroading.info("[POOL] async saved %d vehicles into %d buckets (config: %d)",
-                        totalSaved, buckets.size(), bucketCount);
+                ImmersiveRailroading.info("[POOL] async saved %d vehicles into %d buckets", totalSaved, buckets.size());
             } catch (Exception e) {
                 ModCore.catching(e, "Failed to async save vehicles for world %d", world.getId());
             }
         });
     }
 
-    /** 挂到 CommonEvents.WorldData.LOAD */
     public static void load(World world, File levelDirectory) {
         if (!world.isServer) return;
         if (!Config.ConfigDebug.enableEntityPool) return;
@@ -119,16 +142,13 @@ public class VehiclePersistence {
         File[] files = dir.listFiles();
         if (files == null) return;
 
-        // 扫描目录下所有符合命名规则的 dat 文件
         for (File file : files) {
             Matcher matcher = FILE_PATTERN.matcher(file.getName());
             if (!matcher.matches()) continue;
 
-            // matcher.group(1) 是旧文件里的总桶数，matcher.group(2) 是分卷号
-            // 我们只需要按文件读取即可，不需要管它当时分了多少桶
             try {
                 byte[] bytes = Files.readAllBytes(file.toPath());
-                TagCompound root = new TagCompound(bytes);
+                TagCompound root = new TagCompound(bytes); // 如果文件损坏，这里会抛出 IOException
                 if (!root.hasKey("vehicles")) continue;
 
                 Map<UUID, TagCompound> vehicles = root.getMap("vehicles", UUID::fromString, tc -> tc);
@@ -145,12 +165,16 @@ public class VehiclePersistence {
                     }
                 }
                 loadedFiles++;
-            } catch (IOException e) {
-                ModCore.catching(e, "Failed to load vehicle bucket file %s", file.getName());
+            } catch (Exception e) {
+                // 【核心修复 3】：损坏隔离。防止坏档导致游戏彻底无法启动
+                ModCore.error("Vehicle file %s is corrupted! Renaming to .corrupted", file.getName());
+                ModCore.catching(e);
+                File badFile = new File(file.getParentFile(), file.getName() + ".corrupted");
+                if (badFile.exists()) badFile.delete();
+                file.renameTo(badFile);
             }
         }
 
-        ImmersiveRailroading.info("[POOL] restored %d vehicles (%d skipped) from %d files",
-                restored, skipped, loadedFiles);
+        ImmersiveRailroading.info("[POOL] restored %d vehicles (%d skipped) from %d files", restored, skipped, loadedFiles);
     }
 }

@@ -9,7 +9,6 @@ import cam72cam.mod.serialization.TagCompound;
 import cam72cam.mod.world.World;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -130,7 +129,6 @@ public class VehiclePersistence {
 
     public static void load(World world, File levelDirectory) {
         if (!world.isServer) return;
-        if (!Config.ConfigDebug.enableEntityPool) return;
 
         File dir = dirFor(levelDirectory, world);
         if (!dir.exists()) return;
@@ -158,13 +156,31 @@ public class VehiclePersistence {
                         continue;
                     }
                     try {
-                        pool.createFromTagCompound(entry.getValue());
+                        ModdedEntity e = pool.createFromTagCompound(entry.getValue());
                         restored++;
+
+                        if (!Config.ConfigDebug.enableEntityPool) {
+//                            pool.spawn(e);
+                            // we will get duplicated wrong entity cant be interacted?
+                        }
+                        System.out.println(restored);
                     } catch (Exception e) {
                         ModCore.catching(e, "Failed to restore vehicle %s", entry.getKey());
                     }
                 }
                 loadedFiles++;
+
+                // 【备份处理】：只有池子关闭时，才将文件重命名，防止离线数据丢失
+                // 生成时间戳：20231027_153022
+                String timestamp = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new java.util.Date());
+                if (!Config.ConfigDebug.enableEntityPool) {
+                    File backupFile = new File(file.getParentFile(), file.getName() + "." + timestamp + ".backup");
+                    if (file.renameTo(backupFile)) {
+                        ImmersiveRailroading.info("[POOL] backed up %s -> %s", file.getName(), backupFile.getName());
+                    } else {
+                        ModCore.warn("[POOL] Failed to backup %s", file.getName());
+                    }
+                }
             } catch (Exception e) {
                 // 【核心修复 3】：损坏隔离。防止坏档导致游戏彻底无法启动
                 ModCore.error("Vehicle file %s is corrupted! Renaming to .corrupted", file.getName());

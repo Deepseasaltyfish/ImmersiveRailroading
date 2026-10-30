@@ -432,8 +432,7 @@ public class GlobalRailwayMap implements IScreen {
         if (teleportPos == null) return;
         int x = (int) Math.floor(teleportPos.x);
         int z = (int) Math.floor(teleportPos.z);
-        net.minecraft.client.Minecraft.getMinecraft().player // todo
-                .sendChatMessage(String.format("/tp %d ~ %d", x, z));
+        MinecraftClient.sendChatMessage(String.format("/tp %d ~ %d", x, z));
         teleportPos = null;
     }
 

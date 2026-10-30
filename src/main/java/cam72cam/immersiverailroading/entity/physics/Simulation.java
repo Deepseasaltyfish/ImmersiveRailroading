@@ -99,7 +99,7 @@ public class Simulation {
             loaded = world.getEntities(EntityCoupleableRollingStock.class);
             // 合并池里的离线车辆
             // 原来这里直接合并池子里的车
-            if (Config.ConfigDebug.enableEntityPool) {
+//            if (Config.ConfigDebug.enableEntityPool) {
                 List<EntityCoupleableRollingStock> offlinePool = EntityPool.get(world).getAllEntities().stream()
                         .map(ModdedEntity::getSelf)
                         .filter(Objects::nonNull) // 确保 self 已初始化
@@ -114,7 +114,7 @@ public class Simulation {
                         }
                     }
                 }
-            }
+//            }
 
             boolean newChunksLoaded = lastCount != loaded.size();
 

@@ -79,6 +79,9 @@ public class TrackNode {
                         for (Map<Gauge, TrackSingleGeometrySegment> branch : trackBlock.paths) {
                             for (Map.Entry<Gauge, TrackSingleGeometrySegment> single : branch.entrySet()) {
                                 TrackSingleGeometrySegment seg = single.getValue();
+
+                                if (seg.gauge != this.trackSingleGeometrySegment.gauge) continue;
+
                                 List<VecYPR> points = seg.pointsCache;
                                 double maxDist = seg.gauge.value();
                                 int lastIdx = points.size() - 1;

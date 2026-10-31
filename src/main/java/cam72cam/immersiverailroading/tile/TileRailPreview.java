@@ -30,8 +30,6 @@ public class TileRailPreview extends BlockEntityTickable {
 	private PlacementInfo placementInfo;
 	@TagField
 	private PlacementInfo customInfo;
-	@TagField
-	private boolean isAboveRails = false;//TODO: use Vec3i to replace this
 
 	public ItemStack getItem() {
 		return this.item;
@@ -40,7 +38,6 @@ public class TileRailPreview extends BlockEntityTickable {
 	public void setup(ItemStack stack, PlacementInfo info) {
 		this.item = stack.copy();
 		this.placementInfo = info;
-		this.isAboveRails = placementInfo.placementPosition.y < 0;
 		this.markDirty();
 	}
 
@@ -53,9 +50,9 @@ public class TileRailPreview extends BlockEntityTickable {
 		}
 
 		if (!settings.isPreview) {
-			if (this.getRailRenderInfo() != null && this.getRailRenderInfo().build(player, isAboveRails() ? getPos().down() : getPos())) {
+			if (this.getRailRenderInfo() != null && this.getRailRenderInfo().build(player, getPos().add(0, (int) Math.round(placementInfo.placementPosition.y),0))) {
 				new PreviewRenderPacket(this.getWorld(), this.getPos()).sendToAll();
-				if (isAboveRails()) {
+				if (placementInfo.placementPosition.y < 0) {
 					getWorld().breakBlock(this.getPos());
 				}
 				return;
@@ -211,15 +208,11 @@ public class TileRailPreview extends BlockEntityTickable {
 		if (entityPlayer != null && entityPlayer.isCrouching()) {
 			if (this.getRailRenderInfo() != null && this.getRailRenderInfo().build(entityPlayer, getPos())) {
 				new PreviewRenderPacket(this.getWorld(), this.getPos()).sendToAll();
-				return isAboveRails() && shouldBreakDirect && Config.ConfigDebug.breakTilePreview;
+				return placementInfo.placementPosition.y < 0 && shouldBreakDirect && Config.ConfigDebug.breakTilePreview;
 			}
 			return false;
 		}
 		new PreviewRenderPacket(this.getWorld(), this.getPos()).sendToAll();
 		return true;
-	}
-
-	public boolean isAboveRails() {
-		return isAboveRails;
 	}
 }

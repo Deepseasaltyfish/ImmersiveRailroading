@@ -84,14 +84,28 @@ public class TrackSingleGeometrySegment {
         } else {
             this.placementPosition = builder.info.placementInfo.placementPosition;
         }
-        this.baseCurve = builder.getCurve();
+
         this.rollAndOffsetInfo = builder.info.settings.rollAndOffsetInfo;
         this.referenceTrack = builder.info.settings.track;
         this.facePivotType = builder.info.settings.trackFaceTransSetting.facePivotType();
         this.facePivotOffset = builder.info.settings.trackFaceTransSetting.facePivotOffset();
 
         this.positionsCache = builder.positionsCache;
-        this.pointsCache = builder.getPath(0.25 * gauge.scale());
+
+        if (builder.getPath(0.25 * gauge.scale()).size() == 1) {
+            double dist = 0.25 * gauge.scale();
+            VecYPR orig = builder.getPath(dist).get(0);
+            Vec3d a = new Vec3d(orig.x, orig.y, orig.z);
+            Vec3d dir = VecUtil.fromYaw(dist, this.yaw);
+            Vec3d b = a.add(dir);
+            this.baseCurve = new CubicCurve(a, a.add(dir.scale(1.0 / 3)), b.subtract(dir.scale(1.0 / 3)), b);
+            this.pointsCache = new ArrayList<>();
+            this.pointsCache.add(new VecYPR(a.x, a.y, a.z, this.yaw, 0, orig.getRoll(), -1));
+            this.pointsCache.add(new VecYPR(b.x, b.y, b.z, this.yaw, 0, orig.getRoll(), -1));
+        } else {
+            this.baseCurve = builder.getCurve();
+            this.pointsCache = builder.getPath(0.25 * gauge.scale());
+        }
     }
 
     public void updateForTable(double tablePos, TrackItems type) {

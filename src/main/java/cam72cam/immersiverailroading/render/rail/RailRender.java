@@ -96,7 +96,7 @@ public class RailRender {
 
 
 
-	public static void render(RailInfo info, Vec3d originPlacementPos, boolean isMulti, World world, Vec3i pos, boolean renderOverlay, RenderState state) {
+	public static void renderPreview(RailInfo info, Vec3d originPlacementPos, boolean isMulti, World world, Vec3i pos, boolean renderOverlay, RenderState state) {
 		state.lighting(false);
 
 		RailRender renderer = get(info);

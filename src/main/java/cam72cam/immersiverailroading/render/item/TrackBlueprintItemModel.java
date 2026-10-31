@@ -106,6 +106,6 @@ public class TrackBlueprintItemModel implements ItemRender.IItemModel {
 		state.translate(offPos.x, offPos.y, offPos.z);
 
 		// if this is multi we will get wired issue
-		RailRender.render(info, null, false, world, pos, true, state);
+		RailRender.renderPreview(info, null, false, world, pos, true, state);
 	}
 }

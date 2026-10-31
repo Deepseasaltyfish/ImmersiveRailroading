@@ -38,7 +38,7 @@ public class MultiPreviewRender {
 
                     placementState.translate(0, -preview.getOriginPlacementInfoPos().y, 0);
 
-                    RailRender.render(info, preview.getOriginPlacementInfoPos().scale(-1), true, preview.getWorld(), preview.getPos(), true, placementState);
+                    RailRender.renderPreview(info, preview.getOriginPlacementInfoPos().scale(-1), true, preview.getWorld(), preview.getPos(), true, placementState);
                 }
             }
         }

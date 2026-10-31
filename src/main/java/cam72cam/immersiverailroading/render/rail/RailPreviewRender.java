@@ -28,7 +28,7 @@ public class RailPreviewRender {
 
             state.translate(placementPosition.x, placementPosition.y, placementPosition.z);
             if (!te.isMulti()) {
-                RailRender.render(info, te.getOriginPlacementInfoPos(), false, te.getWorld(), te.getPos(), true, state);
+                RailRender.renderPreview(info, te.getOriginPlacementInfoPos(), false, te.getWorld(), te.getPos(), true, state);
             }
             MinecraftClient.endProfiler();
 		});

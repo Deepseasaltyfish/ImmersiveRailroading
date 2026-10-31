@@ -1,5 +1,6 @@
 package cam72cam.immersiverailroading.render.rail;
 
+import cam72cam.immersiverailroading.library.TrackItems;
 import cam72cam.mod.util.collection.ExpireableMap;
 import cam72cam.immersiverailroading.track.VecYPR;
 import cam72cam.immersiverailroading.track.BuilderBase;
@@ -102,15 +103,17 @@ public class RailRender {
 
 		RenderState railRenderState = state.clone();
 		Vec3d off = info.placementInfo.placementPosition;
+
+		// just added by test result... why?
 		if(originPlacementPos != null) {
 			railRenderState.translate(0, -originPlacementPos.y, 0);
-
-			// just added by test result... why?
 			if(originPlacementPos.y == 0 && !isMulti) {
 				state.translate(0, -1, 0);
 			}
 			if(isMulti) state.translate(0, -originPlacementPos.y, 0);
+			if(info.settings.type == TrackItems.TURNTABLE) railRenderState.translate(0, -1, 0);
 		}
+		if(info.settings.type == TrackItems.TURNTABLE) railRenderState.translate(0, -info.placementInfo.placementPosition.y, 0);
 
 		MinecraftClient.startProfiler("rail");
 		renderer.renderRailModel(railRenderState);

@@ -95,7 +95,7 @@ public class RailRender {
 
 
 
-	public static void render(RailInfo info, Vec3d originPlacementPos, World world, Vec3i pos, boolean renderOverlay, RenderState state) {
+	public static void render(RailInfo info, Vec3d originPlacementPos, boolean isMulti, World world, Vec3i pos, boolean renderOverlay, RenderState state) {
 		state.lighting(false);
 
 		RailRender renderer = get(info);
@@ -103,7 +103,13 @@ public class RailRender {
 		RenderState railRenderState = state.clone();
 		Vec3d off = info.placementInfo.placementPosition;
 		if(originPlacementPos != null) {
-			railRenderState.translate(0, -originPlacementPos.y, 0);//TODO: is this enough? current rail is right but renderOverlay is not
+			railRenderState.translate(0, -originPlacementPos.y, 0);
+
+			// just added by test result... why?
+			if(originPlacementPos.y == 0 && !isMulti) {
+				state.translate(0, -1, 0);
+			}
+			if(isMulti) state.translate(0, -originPlacementPos.y, 0);
 		}
 
 		MinecraftClient.startProfiler("rail");

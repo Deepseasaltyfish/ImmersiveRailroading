@@ -36,9 +36,9 @@ public class MultiPreviewRender {
                 if (GlobalRender.getCameraPos(partialTicks).distanceTo(placementPosition) < GlobalRender.getRenderDistance() + 50) {
                     RenderState placementState = state.clone().translate(placementPosition);
 
-                    placementState.translate(0, -preview.getOriginPlacementInfoPos().y, 0);// TODO: is this enough?
+                    placementState.translate(0, -preview.getOriginPlacementInfoPos().y, 0);
 
-                    RailRender.render(info, preview.getOriginPlacementInfoPos().scale(-1), preview.getWorld(), preview.getPos(), true, placementState);
+                    RailRender.render(info, preview.getOriginPlacementInfoPos().scale(-1), true, preview.getWorld(), preview.getPos(), true, placementState);
                 }
             }
         }

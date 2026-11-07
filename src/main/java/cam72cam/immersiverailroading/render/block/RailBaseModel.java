@@ -34,29 +34,30 @@ public class RailBaseModel {
 
 		StandardModel model = new StandardModel();
 		if (te instanceof TileRail && ((TileRail) te).info != null) {
-			if(((TileRail) te).info.switchBranchIndex > 1) return null;
-			model.addCustom((state, pt) -> {
-				RailInfo info = ((TileRail) te).info;
-                if (info.settings.type == TrackItems.SWITCH) {
-                    //TODO render switch and don't render turn
-                    info = info.withSettings(b -> b.type = TrackItems.STRAIGHT);
-                }
-                if (info.settings.type.isTable()) {
-					ItemStack held = MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY);
-                	if (held.is(IRItems.ITEM_TRACK_BLUEPRINT) || held.is(IRItems.ITEM_GOLDEN_SPIKE)) {
-						info = info.with(b -> b.itemHeld = true);
+			if(((TileRail) te).info.switchBranchIndex <= 1) {
+				model.addCustom((state, pt) -> {
+					RailInfo info = ((TileRail) te).info;
+					if (info.settings.type == TrackItems.SWITCH) {
+						//TODO render switch and don't render turn
+						info = info.withSettings(b -> b.type = TrackItems.STRAIGHT);
+					}
+					if (info.settings.type.isTable()) {
+						ItemStack held = MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY);
+						if (held.is(IRItems.ITEM_TRACK_BLUEPRINT) || held.is(IRItems.ITEM_GOLDEN_SPIKE)) {
+							info = info.with(b -> b.itemHeld = true);
+						}
+
 					}
 
-				}
-
-				RailRender.get(info).renderRailModel(state.translate(info.placementInfo.placementPosition));
-			});
-			if (((TileRail) te).info.settings.type == TrackItems.SWITCH && ((TileRail) te).subInfos != null && !((TileRail) te).subInfos.isEmpty()) {
-				model.addCustom((state, pt) -> {
-					RailInfo info = ((TileRail) te).subInfos.getFirst();
-					Vec3i delta = ((TileRail) te).subInfoPos.getFirst().subtract(te.getPos());
-					RailRender.get(info).renderRailModel(state.translate(info.placementInfo.placementPosition.add(delta)));
+					RailRender.get(info).renderRailModel(state.translate(info.placementInfo.placementPosition));
 				});
+				if (((TileRail) te).info.settings.type == TrackItems.SWITCH && ((TileRail) te).subInfos != null && !((TileRail) te).subInfos.isEmpty()) {
+					model.addCustom((state, pt) -> {
+						RailInfo info = ((TileRail) te).subInfos.getFirst();
+						Vec3i delta = ((TileRail) te).subInfoPos.getFirst().subtract(te.getPos());
+						RailRender.get(info).renderRailModel(state.translate(info.placementInfo.placementPosition.add(delta)));
+					});
+				}
 			}
 		}
 

@@ -30,20 +30,10 @@ public class TileRail extends TileRailBase {
 	public RailInfo info;
 
 	@TagField(value = "subInfos", mapper = RailInfo.subInfosMapper.class)
-	public List<RailInfo> subInfos;// todo also upload track to parent when update
+	public List<RailInfo> subInfos;
 
 	@TagField(value = "subInfoPos", mapper = Vec3iListMapper.class)
 	public List<Vec3i> subInfoPos;
-
-	//todo multi gauges support
-//	@TagField("subGaugeInfo")
-//	public RailInfo subGaugeInfo;
-//
-//	@TagField(value = "subGaugeInfos", mapper = RailInfo.subInfosMapper.class)
-//	public List<RailInfo> subGaugeInfos;
-//
-//	@TagField(value = "subGaugeInfoPos", mapper = Vec3iListMapper.class)
-//	public List<Vec3i> subGaugeInfoPos;
 
 	@TagField("buildTimeMs")
 	private long buildTimeMs;

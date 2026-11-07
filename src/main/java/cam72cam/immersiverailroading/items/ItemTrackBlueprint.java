@@ -55,6 +55,7 @@ public class ItemTrackBlueprint extends CustomItem {
     public ClickResult onClickBlock(Player player, World world, Vec3i pos, Player.Hand hand, Facing facing, Vec3d hit) {
 		ItemStack stack = player.getHeldItem(hand);
 		RailSettings stackInfo = RailSettings.from(stack);
+		MultiSwitchInfo multiSwitchInfo = MultiSwitchInfo.from(stack);
 
 		if (world.isServer && hand == Player.Hand.SECONDARY) {
 			ItemStack blockinfo = world.getItemStack(pos);
@@ -89,7 +90,7 @@ public class ItemTrackBlueprint extends CustomItem {
 
 		PlacementInfo placementInfo = new PlacementInfo(snappedStack, yaw, new Vec3d(hit.x, Math.floor(hit.y), hit.z), true, snapped);
 		placementInfo = placementInfo.offset(RailSettings.from(snappedStack).nearPointData.offset());
-		RailInfo info = new RailInfo(snappedStack, placementInfo, null);
+		RailInfo info = new RailInfo(snappedStack, placementInfo, null, multiSwitchInfo);
 		info.build(player, pos);
 		return ClickResult.ACCEPTED;
     }

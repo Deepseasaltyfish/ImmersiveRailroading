@@ -49,7 +49,7 @@ public class BuilderSwitch extends BuilderBase implements IIterableTrack {
 		straightBuilderReal = new BuilderStraight(straightInfo.withSettings(b -> b.type = TrackItems.STRAIGHT), world, pos, true);
 		
 		turnBuilder.overrideFlexible = true;
-		
+
 		for(TrackBase turn : turnBuilder.tracks) {
 			if (turn instanceof TrackRail) {
 				turn.overrideParent(straightBuilder.getParentPos());

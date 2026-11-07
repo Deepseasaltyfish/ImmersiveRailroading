@@ -58,6 +58,16 @@ public class RailBaseModel {
 					RailRender.get(info).renderRailModel(state.translate(info.placementInfo.placementPosition.add(delta)));
 				});
 			}
+			if (((TileRail) te).info.multiSwitchInfo != null && ((TileRail) te).subInfos != null && !((TileRail) te).subInfos.isEmpty()) {
+				for(int i = 0; i <  ((TileRail) te).subInfos.size(); i++) {
+					int finlalI = i;
+					model.addCustom((state, pt) -> {
+						RailInfo info = ((TileRail) te).subInfos.get(finlalI);
+						Vec3i delta = ((TileRail) te).subInfoPos.get(finlalI).subtract(te.getPos());
+						RailRender.get(info).renderRailModel(state.translate(info.placementInfo.placementPosition.add(delta)));
+					});
+				}
+			}
 		}
 
 		Matrix4 bedblockMatrix4;

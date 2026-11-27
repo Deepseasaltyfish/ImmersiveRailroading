@@ -21,6 +21,34 @@ import java.util.stream.Collectors;
  * */
 public class Consist {
     static boolean debug = false;
+    /** How far a coupler may legitimately stick out past half the body length (blocks). */
+    static final double LINK_SLOP = 4;
+    /** A coupler distance beyond the body lengths by more than this is garbage, not a gap. */
+    static final double MAX_LINK_LENGTH = 4096;
+    private static int debugLengthFixes;
+    private static int debugMoveClamps;
+
+    static void debugLengthFix(SimulationState state, double value) {
+        if (!Simulation.debugCouplers || debugLengthFixes >= 40) {
+            return;
+        }
+        debugLengthFixes++;
+        ImmersiveRailroading.info("[IRDBG] BOGUS LINK LENGTH %s tick=%s value=%s pos=%s",
+                state.config.id, state.tickID, value, state.position);
+    }
+
+    static void debugMoveClamp(SimulationState state, double delta, double applied) {
+        if (!Simulation.debugCouplers || debugMoveClamps >= 40) {
+            return;
+        }
+        debugMoveClamps++;
+        ImmersiveRailroading.info("[IRDBG] CLAMPED CATCHUP %s tick=%s delta=%s applied=%s pos=%s",
+                state.config.id, state.tickID, delta, applied, state.position);
+    }
+
+    private static boolean isSaneLength(double len, double bodyLength) {
+        return Double.isFinite(len) && len >= 0 && len <= bodyLength / 2 + LINK_SLOP;
+    }
 
     public static class Particle {
         public SimulationState state;
@@ -222,7 +250,20 @@ public class Consist {
             // Calculate the applied velocity from this particle.  This should not include the coupler adjustment speed/distance below
             state.velocity = velocityMPT * direction;
 
-            SimulationState future =  this.state.next((position_M - initial_position_M) * direction, blocksAlreadyBroken);
+            /*
+             * A coupler correction must never be allowed to teleport a car.  When a link length
+             * is still wrong (for example right after one carrier entity was re-created) the raw
+             * delta can be hundreds of blocks.  Apply it as a bounded catch-up instead so the
+             * consist slides back into formation over the next few passes.
+             */
+            double delta = position_M - initial_position_M;
+            double maxDelta = Math.max(8, Math.abs(velocityMPT) * 2 + 4);
+            if (!Double.isFinite(delta) || Math.abs(delta) > maxDelta) {
+                double applied = Double.isFinite(delta) ? Math.max(-maxDelta, Math.min(maxDelta, delta)) : 0;
+                debugMoveClamp(state, delta, applied);
+                delta = applied;
+            }
+            SimulationState future =  this.state.next(delta * direction, blocksAlreadyBroken);
 
             //ImmersiveRailroading.info("Moving: %s", position_M - initial_position_M);
 
@@ -302,18 +343,37 @@ public class Consist {
             // These two distanceTos could be replaced with definitions
             double prevLength = prevCoupler.distanceTo(prevPos);
             double nextLength = nextCoupler.distanceTo(nextPos);
+            /*
+             * A re-created carrier entity can briefly expose couplers resolved against a
+             * different / not-yet-loaded rail.  Those lengths are garbage and would be read as
+             * the car being hundreds of blocks long, which is what used to "correct" its
+             * neighbour to a far away position.  Bound them by the actual body dimensions.
+             */
+            if (!isSaneLength(prevLength, prev.state.config.length)) {
+                debugLengthFix(prev.state, prevLength);
+                prevLength = prev.state.config.length / 2;
+            }
+            if (!isSaneLength(nextLength, next.state.config.length)) {
+                debugLengthFix(next.state, nextLength);
+                nextLength = next.state.config.length / 2;
+            }
             //double couplerDistance = prevCoupler.distanceTo(nextCoupler);
 
             //boolean isOverlapping = prevPos.distanceToSquared(prevCoupler) > prevPos.distanceToSquared(nextCoupler);
             double couplerDistance = (prevPos.distanceTo(nextCoupler) - prevPos.distanceTo(prevCoupler) + (nextPos.distanceTo(prevCoupler) - nextPos.distanceTo(nextCoupler)))/2;
-            double totalLength = prevLength + nextLength + couplerDistance;
+            double nominalLength = prevLength + nextLength;
+            if (!Double.isFinite(couplerDistance) || Math.abs(couplerDistance) > nominalLength + MAX_LINK_LENGTH) {
+                debugLengthFix(prev.state, couplerDistance);
+                couplerDistance = 0;
+            }
+            double totalLength = nominalLength + couplerDistance;
 
             // Setup nextParticle position based on prevParticle
             nextParticle.initial_position_M = nextParticle.position_M = prevParticle.position_M + totalLength;
 
             // Setup min/max distances
-            minDistance_M = prevLength + nextLength - maxCouplerDistance;
-            maxDistance_M = prevLength + nextLength + maxCouplerDistance;
+            minDistance_M = nominalLength - maxCouplerDistance;
+            maxDistance_M = nominalLength + maxCouplerDistance;
             coupled = prevEngaged && nextEngaged;
 
             // Fix precision issues in track pathing between cycles

@@ -258,7 +258,7 @@ public class Consist {
              */
             double delta = position_M - initial_position_M;
             double maxDelta = Math.max(8, Math.abs(velocityMPT) * 2 + 4);
-            if (!Double.isFinite(delta) || Math.abs(delta) > maxDelta) {
+            if (Simulation.workarounds && (!Double.isFinite(delta) || Math.abs(delta) > maxDelta)) {
                 double applied = Double.isFinite(delta) ? Math.max(-maxDelta, Math.min(maxDelta, delta)) : 0;
                 debugMoveClamp(state, delta, applied);
                 delta = applied;
@@ -349,11 +349,11 @@ public class Consist {
              * the car being hundreds of blocks long, which is what used to "correct" its
              * neighbour to a far away position.  Bound them by the actual body dimensions.
              */
-            if (!isSaneLength(prevLength, prev.state.config.length)) {
+            if (Simulation.workarounds && !isSaneLength(prevLength, prev.state.config.length)) {
                 debugLengthFix(prev.state, prevLength);
                 prevLength = prev.state.config.length / 2;
             }
-            if (!isSaneLength(nextLength, next.state.config.length)) {
+            if (Simulation.workarounds && !isSaneLength(nextLength, next.state.config.length)) {
                 debugLengthFix(next.state, nextLength);
                 nextLength = next.state.config.length / 2;
             }
@@ -362,7 +362,7 @@ public class Consist {
             //boolean isOverlapping = prevPos.distanceToSquared(prevCoupler) > prevPos.distanceToSquared(nextCoupler);
             double couplerDistance = (prevPos.distanceTo(nextCoupler) - prevPos.distanceTo(prevCoupler) + (nextPos.distanceTo(prevCoupler) - nextPos.distanceTo(nextCoupler)))/2;
             double nominalLength = prevLength + nextLength;
-            if (!Double.isFinite(couplerDistance) || Math.abs(couplerDistance) > nominalLength + MAX_LINK_LENGTH) {
+            if (Simulation.workarounds && (!Double.isFinite(couplerDistance) || Math.abs(couplerDistance) > nominalLength + MAX_LINK_LENGTH)) {
                 debugLengthFix(prev.state, couplerDistance);
                 couplerDistance = 0;
             }

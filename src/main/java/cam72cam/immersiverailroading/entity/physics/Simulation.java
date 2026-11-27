@@ -32,8 +32,15 @@ public class Simulation {
 
     /** TEMP diagnostics for the 1.21 "train splits after chunk/entity reload" bug. Set false to silence. */
     public static boolean debugCouplers = true;
-    /** Keep the consist physically together while a chunk/entity reload is in flight. */
-    public static boolean bridgeMissingStates = true;
+    /**
+     * Master switch for the NON-CORE 1.21 workarounds: cached-body bridging, "healed"
+     * couplers, coupler geometry sanity clamps and teleport-sized move corrections.
+     * The core fix (rebuild from persisted TickPos + rebase onto the session timeline)
+     * does not depend on any of them; keep this false to verify that on its own.
+     */
+    public static boolean workarounds = false;
+    /** Keep a coupler when its partner is merely absent/unregistered. Core behaviour, not a workaround. */
+    public static final boolean keepCouplerWhenAbsent = true;
     /** How long a car may stay missing (chunk/entity reload) before its couplers are released. */
     private static final int MISSING_STATE_GRACE_TICKS = 600;
     /** Upper bound on how far a rebuilt state is marched forward. */
@@ -154,7 +161,7 @@ public class Simulation {
     }
 
     private void rememberStates() {
-        if (!bridgeMissingStates) {
+        if (!workarounds) {
             return;
         }
         Map<UUID, CachedState> previous = LAST_STATES.get(world);
@@ -219,7 +226,7 @@ public class Simulation {
      * chunk load" case, where the partner entity may not be registered with UMC yet.
      */
     private boolean unseenWithinGrace(UUID uuid) {
-        if (!bridgeMissingStates) {
+        if (!keepCouplerWhenAbsent) {
             return false;
         }
         Map<UUID, Long> unseen = UNSEEN_MISSING.get(world);
@@ -233,12 +240,20 @@ public class Simulation {
             unseen.put(uuid, now);
             return true;
         }
+        if (now - first > MISSING_STATE_GRACE_TICKS) {
+            // Self-pruning: rememberStates() is skipped while the workarounds are off.
+            unseen.remove(uuid);
+            return false;
+        }
         return now - first <= MISSING_STATE_GRACE_TICKS;
     }
 
     /** Cars that are currently absent from the world but still inside their grace window. */
     private Set<UUID> missingWithinGrace() {
         Set<UUID> missing = new HashSet<>();
+        if (!workarounds) {
+            return missing;
+        }
         Map<UUID, CachedState> cachedStates = LAST_STATES.get(world);
         if (cachedStates == null || cachedStates.isEmpty()) {
             return missing;
@@ -267,7 +282,7 @@ public class Simulation {
     }
 
     private SimulationState cachedState(UUID uuid, int tickID) {
-        if (!bridgeMissingStates) {
+        if (!workarounds) {
             return null;
         }
         Map<UUID, CachedState> states = LAST_STATES.get(world);
@@ -522,7 +537,7 @@ public class Simulation {
                         continue;
                     }
 
-                    if (missing.contains(otherID)) {
+                    if (workarounds && missing.contains(otherID)) {
                         /*
                          * The car is gone from the world, but we saw it very recently.  Keep the
                          * coupling and feed its last known body into this pass.  Without the
@@ -596,7 +611,7 @@ public class Simulation {
                 } else if (myID.equals(other.interactingRear)) {
                     isOtherCouplerFront = false;
                 } else {
-                    if (state.bridged || other.bridged) {
+                    if (workarounds && (state.bridged || other.bridged)) {
                         /*
                          * One side was reconstructed for this pass, so its persisted coupler
                          * fields may predate this coupling.  Re-point both sides instead of
@@ -656,7 +671,7 @@ public class Simulation {
                 Vec3d otherCouplerPos = isOtherCouplerFront ? other.couplerPositionFront : other.couplerPositionRear;
                 String otherCouplerLabel = isOtherCouplerFront ? "Front" : "Rear";
 
-                if (state.bridged || other.bridged) {
+                if (workarounds && (state.bridged || other.bridged)) {
                     // One side was rebuilt for this pass only; its body may still be a few ticks
                     // behind.  Never sever the train over that, but only record a real violation
                     // that we chose to ignore (logging every healthy pair floods the log).
@@ -779,7 +794,7 @@ public class Simulation {
                  * endless couple / un-couple churn, so use the same threshold for both.
                  */
                 double maxAttachDistScaled = maxCouplerDist * stateA.config.gauge.scale();
-                if (couplerPosA.distanceToSquared(couplerPosB) > maxAttachDistScaled * maxAttachDistScaled) {
+                if (workarounds && couplerPosA.distanceToSquared(couplerPosB) > maxAttachDistScaled * maxAttachDistScaled) {
                     continue;
                 }
                 // Move coupler pos up to inside the BB (it's at track level by default)

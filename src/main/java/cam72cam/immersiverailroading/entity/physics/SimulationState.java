@@ -340,7 +340,7 @@ public class SimulationState {
          * point as getVelocity().  Feeding that into the solver makes the car fly along the
          * track for the whole session, so treat implausible values as "stopped".
          */
-        if (!Double.isFinite(fallbackVelocity) || Math.abs(fallbackVelocity) > MAX_FALLBACK_VELOCITY) {
+        if (Simulation.workarounds && (!Double.isFinite(fallbackVelocity) || Math.abs(fallbackVelocity) > MAX_FALLBACK_VELOCITY)) {
             fallbackVelocity = 0;
         }
         velocity = usedTickPos && tickPos.speed != null ? tickPos.speed.minecraft() : fallbackVelocity;
@@ -512,13 +512,13 @@ public class SimulationState {
              */
             double frontLimit = Math.abs(config.couplerDistanceFront - config.offsetFront) + MOVE_SLOP;
             double rearLimit = Math.abs(config.couplerDistanceRear - config.offsetRear) + MOVE_SLOP;
-            if (!isFinite(couplerPositionFront)
-                    || positionFront.distanceToSquared(couplerPositionFront) > frontLimit * frontLimit) {
+            if (Simulation.workarounds && (!isFinite(couplerPositionFront)
+                    || positionFront.distanceToSquared(couplerPositionFront) > frontLimit * frontLimit)) {
                 debugMove("REJECTED BOGUS FRONT COUPLER", this, 0, couplerPositionFront);
                 couplerPositionFront = position.add(VecUtil.fromWrongYaw(config.couplerDistanceFront, yaw));
             }
-            if (!isFinite(couplerPositionRear)
-                    || positionRear.distanceToSquared(couplerPositionRear) > rearLimit * rearLimit) {
+            if (Simulation.workarounds && (!isFinite(couplerPositionRear)
+                    || positionRear.distanceToSquared(couplerPositionRear) > rearLimit * rearLimit)) {
                 debugMove("REJECTED BOGUS REAR COUPLER", this, 0, couplerPositionRear);
                 couplerPositionRear = position.add(VecUtil.fromWrongYaw(config.couplerDistanceRear, yaw));
             }
@@ -567,7 +567,7 @@ public class SimulationState {
 
     public SimulationState next(double distance, List<Vec3i> blocksAlreadyBroken) {
         SimulationState next = new SimulationState(this);
-        if (!Double.isFinite(distance) || Math.abs(distance) > MAX_MOVE_PER_TICK) {
+        if (Simulation.workarounds && (!Double.isFinite(distance) || Math.abs(distance) > MAX_MOVE_PER_TICK)) {
             double clamped = Double.isFinite(distance)
                     ? Math.copySign(MAX_MOVE_PER_TICK, distance)
                     : 0;
@@ -657,7 +657,7 @@ public class SimulationState {
          * may only ever travel about the requested distance along its own track, so reject a
          * destination that is wildly further away instead of applying it.
          */
-        if (Math.abs(distance) > 0.0001) {
+        if (Simulation.workarounds && Math.abs(distance) > 0.0001) {
             double maxBogieTravel = Math.abs(distance) + MOVE_SLOP;
             if (!isFinite(nextFrontPos) || !isFinite(nextRearPos)
                     || positionFront.distanceToSquared(nextFrontPos) > maxBogieTravel * maxBogieTravel
